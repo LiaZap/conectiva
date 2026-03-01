@@ -39,6 +39,7 @@ export const generalLimiter = rateLimit({
   legacyHeaders: false,
   message: { success: false, error: 'Muitas requisições. Tente novamente em 1 minuto.' },
   keyGenerator: getClientIp,
+  validate: { trustProxy: false, xForwardedForHeader: false },
 });
 
 // Webhooks: 30 req/min por IP (mais restrito)
@@ -49,6 +50,7 @@ export const webhookLimiter = rateLimit({
   legacyHeaders: false,
   message: { success: false, error: 'Limite de webhooks atingido.' },
   keyGenerator: getClientIp,
+  validate: { trustProxy: false, xForwardedForHeader: false },
 });
 
 // Auth: 10 tentativas/min (brute force protection)
@@ -59,6 +61,7 @@ export const authLimiter = rateLimit({
   legacyHeaders: false,
   message: { success: false, error: 'Muitas tentativas de login. Aguarde 1 minuto.' },
   keyGenerator: getClientIp,
+  validate: { trustProxy: false, xForwardedForHeader: false },
 });
 
 // ── Sanitização de Inputs ──────────────────────────────

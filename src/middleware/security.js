@@ -25,10 +25,9 @@ export const helmetMiddleware = helmet({
 function getClientIp(req) {
   const forwarded = req.headers['x-forwarded-for'];
   if (forwarded) {
-    // Pegar o primeiro IP (cliente real) da cadeia x-forwarded-for
     return forwarded.split(',')[0].trim();
   }
-  return req.ip || req.socket?.remoteAddress || 'unknown';
+  return req.socket?.remoteAddress || 'unknown';
 }
 
 // Geral: 100 req/min por IP
@@ -39,7 +38,7 @@ export const generalLimiter = rateLimit({
   legacyHeaders: false,
   message: { success: false, error: 'Muitas requisições. Tente novamente em 1 minuto.' },
   keyGenerator: getClientIp,
-  validate: { trustProxy: false, xForwardedForHeader: false },
+  validate: false,
 });
 
 // Webhooks: 30 req/min por IP (mais restrito)
@@ -50,7 +49,7 @@ export const webhookLimiter = rateLimit({
   legacyHeaders: false,
   message: { success: false, error: 'Limite de webhooks atingido.' },
   keyGenerator: getClientIp,
-  validate: { trustProxy: false, xForwardedForHeader: false },
+  validate: false,
 });
 
 // Auth: 10 tentativas/min (brute force protection)
@@ -61,7 +60,7 @@ export const authLimiter = rateLimit({
   legacyHeaders: false,
   message: { success: false, error: 'Muitas tentativas de login. Aguarde 1 minuto.' },
   keyGenerator: getClientIp,
-  validate: { trustProxy: false, xForwardedForHeader: false },
+  validate: false,
 });
 
 // ── Sanitização de Inputs ──────────────────────────────

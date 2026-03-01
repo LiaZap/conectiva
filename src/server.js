@@ -49,6 +49,15 @@ app.use(sanitizeBody);
 // ── Widget estático ──
 app.use('/widget', express.static(join(__dirname, '..', 'widget')));
 
+// ── Dashboard estático (produção) ──
+if (config.nodeEnv === 'production') {
+  const dashPath = join(__dirname, '..', 'dashboard', 'dist');
+  app.use('/dashboard', express.static(dashPath));
+  app.get('/dashboard/*', (_req, res) => {
+    res.sendFile(join(dashPath, 'index.html'));
+  });
+}
+
 // HTTP server
 const server = createServer(app);
 

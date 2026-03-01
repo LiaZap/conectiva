@@ -117,8 +117,8 @@ server.listen(config.port, () => {
 });
 
 // Shutdown graceful
-async function shutdown() {
-  console.log('\n[server] Encerrando...');
+async function shutdown(signal) {
+  console.log(`\n[server] Encerrando... (signal: ${signal})`);
   clearInterval(expireInterval);
   server.close();
   redis.disconnect();
@@ -126,5 +126,11 @@ async function shutdown() {
   process.exit(0);
 }
 
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('uncaughtException', (err) => {
+  console.error('[server] uncaughtException:', err.message, err.stack);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[server] unhandledRejection:', reason);
+});

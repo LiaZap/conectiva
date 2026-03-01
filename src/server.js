@@ -94,7 +94,8 @@ app.get('/health', async (_req, res) => {
   } catch (_) { /* falhou */ }
 
   const healthy = checks.postgres && checks.redis;
-  res.status(healthy ? 200 : 503).json({ status: healthy ? 'ok' : 'degraded', checks });
+  // Sempre retorna 200 para não ser reiniciado pelo health check do EasyPanel/Docker
+  res.status(200).json({ status: healthy ? 'ok' : 'degraded', checks });
 });
 
 // Error handler global

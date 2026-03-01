@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Conectiva Infor - Demo Chat Widget</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f1f5f9; color: #1e293b;
+    }
+    .hero {
+      background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+      color: #fff; padding: 80px 24px; text-align: center;
+    }
+    .hero h1 { font-size: 42px; font-weight: 700; margin-bottom: 16px; }
+    .hero p { font-size: 18px; opacity: 0.9; max-width: 600px; margin: 0 auto; }
+    .content { max-width: 900px; margin: 0 auto; padding: 48px 24px; }
+    .card {
+      background: #fff; border-radius: 12px; padding: 32px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 24px;
+    }
+    .card h2 { font-size: 22px; margin-bottom: 12px; color: #1e3a5f; }
+    .card p { font-size: 15px; line-height: 1.7; color: #475569; }
+    code {
+      background: #f1f5f9; padding: 2px 8px; border-radius: 4px;
+      font-size: 13px; color: #2563eb;
+    }
+    pre {
+      background: #1e293b; color: #e2e8f0; padding: 20px;
+      border-radius: 8px; overflow-x: auto; font-size: 13px;
+      line-height: 1.6; margin-top: 12px;
+    }
+    .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
+    .feature {
+      background: #fff; border-radius: 12px; padding: 24px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    }
+    .feature h3 { font-size: 16px; margin-bottom: 8px; color: #1e3a5f; }
+    .feature p { font-size: 14px; color: #64748b; }
+    .feature-icon {
+      width: 44px; height: 44px; border-radius: 10px;
+      background: #eff6ff; display: flex; align-items: center;
+      justify-content: center; margin-bottom: 12px; font-size: 22px;
+    }
+    footer { text-align: center; padding: 24px; color: #94a3b8; font-size: 13px; }
+  </style>
+</head>
+<body>
+
+  <div class="hero">
+    <h1>Conectiva Infor</h1>
+    <p>Provedor de internet com atendimento inteligente 24/7. Clique no botao azul no canto inferior direito para testar o chat.</p>
+  </div>
+
+  <div class="content">
+    <div class="card">
+      <h2>Sobre o Widget</h2>
+      <p>
+        Este e o widget de chat embeddable da Conectiva Infor. Ele pode ser adicionado a qualquer
+        site com uma unica linha de codigo. O widget se conecta ao backend e processa mensagens
+        usando inteligencia artificial.
+      </p>
+    </div>
+
+    <div class="features">
+      <div class="feature">
+        <div class="feature-icon">&#128172;</div>
+        <h3>Chat em Tempo Real</h3>
+        <p>Respostas instantaneas com IA integrada ao sistema MK Solutions.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">&#128179;</div>
+        <h3>Segunda Via de Boleto</h3>
+        <p>Gere a segunda via do seu boleto informando apenas o CPF.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">&#128295;</div>
+        <h3>Suporte Tecnico</h3>
+        <p>Diagnostico automatico de problemas de conexao.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">&#129309;</div>
+        <h3>Negociacao</h3>
+        <p>Descontos e parcelamento automaticos para faturas em atraso.</p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top: 24px;">
+      <h2>Como Usar</h2>
+      <p>Adicione o seguinte codigo antes do <code>&lt;/body&gt;</code> do seu site:</p>
+      <pre>&lt;script
+  src="https://seu-servidor:3000/widget/conectiva-chat.js"
+  data-server="https://seu-servidor:3000"
+  data-color="#2563eb"
+  data-title="Conectiva Infor"
+  data-greeting="Ola! Como posso ajudar?"
+  data-position="right"&gt;
+&lt;/script&gt;</pre>
+
+      <p style="margin-top: 16px;"><strong>Atributos configuráveis:</strong></p>
+      <pre>data-server     URL do backend (obrigatorio)
+data-color      Cor principal (hex)
+data-title      Titulo no cabecalho do chat
+data-greeting   Mensagem de boas-vindas
+data-position   "right" ou "left"
+data-placeholder Placeholder do campo de texto</pre>
+    </div>
+  </div>
+
+  <footer>
+    Conectiva Infor &copy; 2026 — Atendimento Inteligente 24/7
+  </footer>
+
+  <!-- Widget de Chat -->
+  <script
+    src="./conectiva-chat.js"
+    data-server="http://localhost:3000"
+    data-color="#2563eb"
+    data-title="Conectiva Infor"
+    data-greeting="Ola! Sou o assistente virtual da Conectiva Infor. Como posso ajudar?"
+    data-position="right">
+  </script>
+
+</body>
+</html>

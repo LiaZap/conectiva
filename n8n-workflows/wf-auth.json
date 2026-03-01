@@ -1,0 +1,147 @@
+{
+  "name": "MK Auth - Renovar Token",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 50
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Cron Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://mk.conectivainfor.com.br/mk/WSAutenticacao.rule",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "sys", "value": "MK0" },
+            { "name": "token", "value": "a226bc3b85a80afce7ea2b15b5333aef" },
+            { "name": "password", "value": "3577f21691a3977" },
+            { "name": "cd_servico", "value": "9999" }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "http-auth",
+      "name": "HTTP - Autenticar MK",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-ok",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "OK",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "if-ok",
+      "name": "IF Status OK",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\n\n// MK retorna o token em diferentes formatos possiveis\nconst token = response.TokenRetornoAutenticacao \n  || response.tokenRetornoAutenticacao \n  || response.Token\n  || response.token;\n\nif (!token) {\n  throw new Error('Token nao encontrado na resposta MK: ' + JSON.stringify(response));\n}\n\nreturn [{ json: { token, authenticated_at: new Date().toISOString() } }];"
+      },
+      "id": "extract-token",
+      "name": "Extrair Token",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 200]
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "mk:auth:token",
+        "value": "={{ $json.token }}",
+        "expire": true,
+        "ttl": 3300
+      },
+      "id": "redis-set",
+      "name": "Redis SET Token",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [1140, 200],
+      "credentials": {
+        "redis": {
+          "id": "redis-cred",
+          "name": "Redis Local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const error = $input.first().json;\nconsole.log('Falha na autenticacao MK:', JSON.stringify(error));\nreturn [{ json: { success: false, error: 'Autenticacao MK falhou', details: error } }];"
+      },
+      "id": "log-error",
+      "name": "Log Erro Auth",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 420]
+    }
+  ],
+  "connections": {
+    "Cron Trigger": {
+      "main": [
+        [{ "node": "HTTP - Autenticar MK", "type": "main", "index": 0 }]
+      ]
+    },
+    "HTTP - Autenticar MK": {
+      "main": [
+        [{ "node": "IF Status OK", "type": "main", "index": 0 }]
+      ]
+    },
+    "IF Status OK": {
+      "main": [
+        [{ "node": "Extrair Token", "type": "main", "index": 0 }],
+        [{ "node": "Log Erro Auth", "type": "main", "index": 0 }]
+      ]
+    },
+    "Extrair Token": {
+      "main": [
+        [{ "node": "Redis SET Token", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    { "name": "MK Solutions" },
+    { "name": "Auth" }
+  ]
+}

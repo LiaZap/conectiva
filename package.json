@@ -1,0 +1,32 @@
+{
+  "name": "conectiva-bot",
+  "version": "1.0.0",
+  "description": "Sistema de Atendimento Inteligente 24/7 - Conectiva Infor",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test:connections": "node scripts/test-connections.js",
+    "test:mk-auth": "node tests/test-mk-auth.js",
+    "test:database": "node tests/test-database.js",
+    "test:session-flow": "node tests/test-session-flow.js",
+    "test:webhook": "node tests/test-webhook.js",
+    "test:all": "node tests/test-mk-auth.js && node tests/test-database.js && node tests/test-webhook.js && node tests/test-session-flow.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^8.1.0",
+    "ioredis": "^5.4.2",
+    "jsonwebtoken": "^9.0.3",
+    "openai": "^4.77.0",
+    "pg": "^8.13.1",
+    "socket.io": "^4.8.1",
+    "uuid": "^11.0.5"
+  }
+}

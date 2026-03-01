@@ -66,7 +66,19 @@ app.use(apiRouter);
 app.use(dashboardRouter);
 
 // Health check
-const redis = new Redis(config.redisUrl, { lazyConnect: true, maxRetriesPerRequest: 1 });
+const redis = new Redis(config.redisUrl, {
+  lazyConnect: true,
+  maxRetriesPerRequest: 1,
+  retryStrategy: (times) => (times > 3 ? null : Math.min(times * 500, 2000)),
+});
+redis.on('error', (err) => {
+  console.error('[redis] Erro de conexão:', err.message);
+});
+
+// Rota raiz (evita 404 no health check padrão do EasyPanel)
+app.get('/', (_req, res) => {
+  res.json({ service: 'conectiva-bot', status: 'running' });
+});
 
 app.get('/health', async (_req, res) => {
   const checks = { postgres: false, redis: false };

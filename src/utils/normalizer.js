@@ -1,22 +1,26 @@
 /**
  * Normaliza payload recebido via webhook da Uazapi.
- * Payload real: { sender, chatid, content, text, senderName, fromMe, wasSentByApi, messageType, type, ... }
+ * A Uazapi envia os dados dentro de body.message (objeto aninhado).
+ * Payload interno: { sender, chatid, content, text, senderName, fromMe, wasSentByApi, ... }
  */
 export function normalizeUazapiPayload(body) {
-  const data = body.data || body;
+  let data = body.data || body;
+
+  // Uazapi envia o payload real dentro de body.message como objeto
+  if (data.message && typeof data.message === 'object') {
+    data = data.message;
+  }
 
   // Extrair telefone: sender/chatid vem como "5511999999999@s.whatsapp.net"
   const rawPhone = data.phone || data.sender || data.chatid || data.from || data.number || '';
   const from = rawPhone.replace(/@.*$/, '').replace(/\D/g, '');
 
   // Extrair texto da mensagem (content é o campo principal da Uazapi)
-  const rawMessage = data.content || data.text || data.message || data.body || '';
-  // Garantir que é string (caso venha como objeto)
-  const message = typeof rawMessage === 'string' ? rawMessage : JSON.stringify(rawMessage);
+  const message = data.content || data.text || '';
 
   return {
     from,
-    message,
+    message: typeof message === 'string' ? message : String(message),
     pushName: data.pushName || data.senderName || data.sender_name || '',
     messageType: data.messageType || data.type || 'text',
     fromMe: data.fromMe === true || data.wasSentByApi === true,

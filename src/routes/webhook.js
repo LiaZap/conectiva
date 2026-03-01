@@ -20,7 +20,17 @@ async function processMessage(canal, body, replyFn) {
   const totalStart = Date.now();
 
   // 1. Normalizar payload
-  const { from, message, pushName } = normalizeChannel(body, canal);
+  const normalized = normalizeChannel(body, canal);
+  const { from, message, pushName, fromMe } = normalized;
+
+  console.log('[webhook] Payload recebido:', { canal, from, message: message?.substring(0, 80), pushName, fromMe });
+
+  // Ignorar mensagens enviadas pelo próprio bot
+  if (fromMe) {
+    console.log('[webhook] Ignorando mensagem fromMe');
+    return;
+  }
+
   if (!message) return;
 
   const telefone = canal === 'whatsapp' ? formatPhone(from) : from;

@@ -51,6 +51,50 @@ export async function sendDocument(telefone, url, filename, caption) {
 }
 
 /**
+ * Baixa mídia de áudio descriptografada via API da Uazapi.
+ * POST /chat/downloadaudio  { Url, MediaKey, Mimetype, FileSHA256, FileLength }
+ * Retorna o áudio descriptografado como Buffer binário.
+ */
+export async function downloadAudio({ mediaUrl, mediaKey, mimetype, fileSHA256, fileLength }) {
+  try {
+    console.log('[whatsapp] downloadAudio via Uazapi...', { fileLength, mimetype });
+
+    const { data } = await axios.post(
+      `${config.uazapi.baseUrl}/chat/downloadaudio`,
+      {
+        Url: mediaUrl,
+        MediaKey: mediaKey,
+        Mimetype: mimetype,
+        FileSHA256: fileSHA256,
+        FileLength: fileLength || 0,
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          token: config.uazapi.token,
+        },
+        responseType: 'arraybuffer',
+        timeout: 30_000,
+      }
+    );
+
+    const buffer = Buffer.from(data);
+    console.log('[whatsapp] downloadAudio ok', { bytes: buffer.length });
+    return { success: true, buffer };
+  } catch (err) {
+    console.error('[whatsapp] downloadAudio erro:', err.response?.status, err.message);
+    // Tentar extrair mensagem de erro do body
+    if (err.response?.data) {
+      try {
+        const errText = Buffer.from(err.response.data).toString('utf-8');
+        console.error('[whatsapp] downloadAudio resposta:', errText.substring(0, 300));
+      } catch (_) {}
+    }
+    return { success: false, error: err.message };
+  }
+}
+
+/**
  * Envia menu interativo (botões) via Uazapi.
  * POST /send/menu  { number, title, text, footer, options }
  */

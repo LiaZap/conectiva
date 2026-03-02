@@ -63,6 +63,49 @@ async function whisperTranscribe(audioBuffer, mimetype, filename) {
 }
 
 /**
+ * Transcreve áudio a partir de um Buffer já descriptografado.
+ *
+ * @param {Buffer} audioBuffer — Buffer com o áudio descriptografado
+ * @param {string} [mimetype]  — MIME type
+ * @param {string} [filename]  — Nome do arquivo
+ * @returns {Promise<{ success: boolean, text?: string, tempo_ms?: number, error?: string }>}
+ */
+export async function transcribeAudioBuffer(audioBuffer, mimetype, filename) {
+  const start = Date.now();
+
+  try {
+    if (!audioBuffer || audioBuffer.length === 0) {
+      return { success: false, error: 'Buffer de áudio vazio', tempo_ms: 0 };
+    }
+
+    console.log('[audio] Transcrevendo buffer:', { bytes: audioBuffer.length, mimetype });
+
+    if (audioBuffer.length > 25 * 1024 * 1024) {
+      return { success: false, error: 'Áudio excede 25MB (limite Whisper)', tempo_ms: Date.now() - start };
+    }
+
+    const text = await whisperTranscribe(audioBuffer, mimetype, filename);
+    const elapsed = Date.now() - start;
+
+    console.log('[audio] Transcrição buffer concluída:', {
+      chars: text?.length,
+      elapsed: `${elapsed}ms`,
+      preview: text?.substring(0, 100),
+    });
+
+    if (!text) {
+      return { success: false, error: 'Transcrição retornou vazia', tempo_ms: elapsed };
+    }
+
+    return { success: true, text, tempo_ms: elapsed };
+  } catch (err) {
+    const elapsed = Date.now() - start;
+    console.error('[audio] Erro na transcrição (buffer):', err.message);
+    return { success: false, error: err.message, tempo_ms: elapsed };
+  }
+}
+
+/**
  * Baixa um arquivo de áudio de uma URL e transcreve com OpenAI Whisper.
  *
  * @param {string} audioUrl     — URL do arquivo de áudio

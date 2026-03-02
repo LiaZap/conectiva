@@ -186,6 +186,18 @@ export function normalizeUazapiPayload(body) {
     }
   }
 
+  // Extrair campos de criptografia de mídia (necessários para download via Uazapi)
+  // A Uazapi/WhatsApp envia: mediaKey, fileSHA256, fileLength no content
+  let mediaKey = null;
+  let fileSHA256 = null;
+  let fileLength = null;
+  if (data.content && typeof data.content === 'object') {
+    mediaKey = data.content.mediaKey || data.content.MediaKey || null;
+    fileSHA256 = data.content.fileSHA256 || data.content.FileSHA256 || null;
+    fileLength = data.content.fileLength || data.content.FileLength || null;
+    if (fileLength) fileLength = parseInt(fileLength, 10) || null;
+  }
+
   // Verificar se deve ser ignorado
   const isIgnored = IGNORED_TYPES.has(data.messageType || '') ||
     IGNORED_TYPES.has(data.type || '') ||
@@ -204,6 +216,10 @@ export function normalizeUazapiPayload(body) {
     mediaFilename,
     mediaMimetype,
     mediaBase64,
+    // Campos de criptografia (para download via Uazapi)
+    mediaKey,
+    fileSHA256,
+    fileLength,
   };
 }
 

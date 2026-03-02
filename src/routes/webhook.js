@@ -5,10 +5,10 @@ import * as sessionService from '../services/session.js';
 import * as logger from '../services/logger.js';
 
 import { execute as n8nExecute } from '../services/n8n.js';
-import { sendText, sendDocument } from '../services/whatsapp.js';
+import { sendText, sendDocument, downloadAudio } from '../services/whatsapp.js';
 import { analisarNegociacao } from '../services/negotiation.js';
 import { classify, formatResponse, generateDiagnostic } from '../services/ai.js';
-import { transcribeAudio, transcribeAudioBase64 } from '../services/audio.js';
+import { transcribeAudio, transcribeAudioBase64, transcribeAudioBuffer } from '../services/audio.js';
 import { emit, emitToSession, EVENTS } from '../websocket/events.js';
 
 const router = Router();
@@ -413,7 +413,7 @@ const MEDIA_RESPONSES = {
 router.post('/webhook/whatsapp', async (req, res) => {
   try {
     // Normalizar para extrair dados (incluindo campos de mídia para áudio)
-    const { from, message, pushName, fromMe, messageType, isIgnored, mediaUrl, mediaMimetype, mediaFilename, mediaBase64 } = normalizeChannel(req.body, 'whatsapp');
+    const { from, message, pushName, fromMe, messageType, isIgnored, mediaUrl, mediaMimetype, mediaFilename, mediaBase64, mediaKey, fileSHA256, fileLength } = normalizeChannel(req.body, 'whatsapp');
 
     // Ignorar mensagens do próprio bot
     if (fromMe) {
@@ -449,16 +449,29 @@ router.post('/webhook/whatsapp', async (req, res) => {
           emit(EVENTS.TRANSCREVENDO_AUDIO, { session_id: sid, telefone });
           emitToSession(sid, EVENTS.TRANSCREVENDO_AUDIO, { telefone });
 
-          // Tentar transcrever: via URL ou via base64
+          // Tentar transcrever: 1) via Uazapi download API, 2) via URL direta, 3) via base64
           let result = null;
 
-          if (mediaUrl) {
+          // 1) Download descriptografado via Uazapi (método principal)
+          if (mediaUrl && mediaKey) {
+            console.log(`[webhook] Tentando download descriptografado via Uazapi...`);
+            const dl = await downloadAudio({ mediaUrl, mediaKey, mimetype: mediaMimetype, fileSHA256, fileLength });
+            if (dl.success && dl.buffer && dl.buffer.length > 0) {
+              result = await transcribeAudioBuffer(dl.buffer, mediaMimetype, mediaFilename);
+            } else {
+              console.log(`[webhook] Download Uazapi falhou: ${dl.error}, tentando URL direta...`);
+              // 2) Fallback: tentar URL direta (pode funcionar se não for criptografada)
+              result = await transcribeAudio(mediaUrl, mediaMimetype, mediaFilename);
+            }
+          } else if (mediaUrl) {
+            // 2) URL direta (sem mediaKey para descriptografar)
             result = await transcribeAudio(mediaUrl, mediaMimetype, mediaFilename);
           } else if (mediaBase64) {
-            console.log(`[webhook] Áudio sem URL, tentando via base64 (${mediaBase64.length} chars)`);
+            // 3) Base64
+            console.log(`[webhook] Tentando via base64 (${mediaBase64.length} chars)`);
             result = await transcribeAudioBase64(mediaBase64, mediaMimetype, mediaFilename);
           } else {
-            console.log(`[webhook] Áudio sem mediaUrl e sem base64 de ${telefone}`);
+            console.log(`[webhook] Áudio sem mediaUrl, sem mediaKey e sem base64 de ${telefone}`);
           }
 
           if (result) {

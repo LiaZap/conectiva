@@ -132,17 +132,28 @@ async function processMessage(canal, body, replyFn) {
     session.cpf_cnpj = cpfFromText;
   }
 
-  // 7. Se precisa CPF e não tem, pedir
-  if (precisaCPF && !session.cpf_cnpj) {
-    const pedidoCPF = respostaSugerida || 'Para continuar, preciso do seu CPF. Pode informar, por favor?';
+  // 7. Verificar se a ação MK requer identificação do cliente
+  // Ações que PRECISAM de CPF ou cd_cliente para funcionar
+  const ACTIONS_REQUIRING_CUSTOMER = new Set([
+    'FATURAS_PENDENTES', 'SEGUNDA_VIA', 'CONEXOES_CLIENTE', 'CONTRATOS_CLIENTE',
+    'CRIAR_OS', 'AUTO_DESBLOQUEIO', 'NOVO_CONTRATO', 'NOVA_LEAD',
+    'FATURAS_AVANCADO', 'ATUALIZAR_CADASTRO', 'CONSULTAR_CADASTRO',
+  ]);
+
+  // Se precisa CPF (IA pediu OU ação MK requer) e não tem, pedir ao cliente
+  const precisaIdentificacao = precisaCPF || (acaoMK && ACTIONS_REQUIRING_CUSTOMER.has(acaoMK));
+  if (precisaIdentificacao && !session.cpf_cnpj && !session.cd_cliente_mk) {
+    const pedidoCPF = respostaSugerida || 'Para que eu possa consultar suas informações e ajudá-lo melhor, preciso do seu CPF ou CNPJ. Pode informar, por favor?';
     await replyFn(telefone, pedidoCPF);
     await logger.saveMessage({ session_id: sid, direcao: 'saida', conteudo: pedidoCPF, canal });
     await logger.saveInteraction({
       session_id: sid, intencao, confianca, mensagem_cliente: message,
-      resposta_ia: pedidoCPF, status: 'sucesso', tempo_ia_ms,
+      resposta_ia: pedidoCPF, status: 'aguardando_cpf', tempo_ia_ms,
       tempo_total_ms: Date.now() - totalStart,
     });
     emit(EVENTS.RESPOSTA_ENVIADA, { session_id: sid, resposta: pedidoCPF });
+    emitToSession(sid, EVENTS.RESPOSTA_ENVIADA, { resposta: pedidoCPF, direcao: 'saida' });
+    console.log(`[webhook] CPF necessário para ${acaoMK || intencao}, aguardando cliente`);
     return;
   }
 

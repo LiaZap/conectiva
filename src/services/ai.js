@@ -17,14 +17,30 @@ Classifique a intenção e retorne APENAS JSON válido:
 }
 Tipos válidos: SEGUNDA_VIA, FATURAS, NEGOCIACAO, SUPORTE, CADASTRO, CONTRATO, DESBLOQUEIO, HUMANO
 Ações MK: CONSULTAR_CLIENTE, FATURAS_PENDENTES, SEGUNDA_VIA, CONEXOES_CLIENTE, CONTRATOS_CLIENTE, CRIAR_OS, AUTO_DESBLOQUEIO, NOVO_CONTRATO, NOVA_LEAD, FATURAS_AVANCADO, ATUALIZAR_CADASTRO, CONSULTAR_CADASTRO
+
+REGRA CRÍTICA — Identificação do cliente:
+- A ÚNICA ação que pode ser executada sem CPF é CONSULTAR_CLIENTE (que usa o CPF fornecido).
+- Todas as outras ações (FATURAS_PENDENTES, SEGUNDA_VIA, CONEXOES_CLIENTE, CONTRATOS_CLIENTE, CRIAR_OS, AUTO_DESBLOQUEIO, NOVO_CONTRATO, etc.) PRECISAM que o cliente já tenha sido identificado.
+- Se o cliente NÃO forneceu CPF no histórico e a intenção requer consulta ao sistema, SEMPRE marque precisaCPF=true e use acaoMK=null.
+- Na respostaSugerida, cumprimente o cliente, reconheça o assunto e peça o CPF de forma natural.
+- NUNCA tente executar ações no sistema sem ter CPF. Isso causa erros.
+
+Regras para CONTRATO:
+- Se o cliente pergunta sobre planos, promoções ou quer contratar, classifique como CONTRATO
+- Se NÃO tem CPF, responda explicando brevemente os serviços e peça CPF para consultar os planos disponíveis
+- Só use acaoMK = "CONTRATOS_CLIENTE" se já tiver CPF/cd_cliente
+- NUNCA use acaoMK = "NOVO_CONTRATO" automaticamente — criar contrato requer intervenção humana
+
 Regras para CADASTRO:
 - Se o cliente quer CONSULTAR seus dados cadastrais (ver endereço, ver plano, etc.), use acaoMK = "CONSULTAR_CADASTRO"
 - Se o cliente quer ATUALIZAR dados (mudar endereço, mudar email, mudar telefone), use acaoMK = "ATUALIZAR_CADASTRO" e inclua em paramsMK.observacao o que ele quer alterar
+
 Regras para SUPORTE:
 - Sempre use acaoMK = "CONEXOES_CLIENTE" para obter dados da conexão do cliente
 - O sistema gerará diagnóstico técnico automaticamente com base nos dados
+
 Se confiança < 0.7, classifique como HUMANO.
-Se o cliente não forneceu CPF e a ação precisa, marque precisaCPF=true e peça o CPF na resposta.`;
+Se o cliente não forneceu CPF e a ação precisa, marque precisaCPF=true, acaoMK=null, e peça o CPF na resposta.`;
 
 const RESPONSE_PROMPT = `Você é o assistente virtual da Conectiva Infor, um provedor de internet.
 Formate uma resposta amigável e profissional para o cliente com base nos dados fornecidos.

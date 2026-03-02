@@ -1,6 +1,11 @@
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 const COLOR_MAP = {
+  conectiva: {
+    text: 'text-conectiva-400',
+    bg: 'bg-conectiva-500/10',
+    iconBg: 'bg-conectiva-500/15',
+  },
   emerald: {
     text: 'text-emerald-400',
     bg: 'bg-emerald-500/10',
@@ -34,13 +39,13 @@ const COLOR_MAP = {
  *   label      — Metric label (e.g. "Total atendimentos")
  *   value      — Main value (string | number)
  *   sub        — Subtitle text
- *   color      — 'emerald' | 'blue' | 'amber' | 'red' | 'violet'
+ *   color      — 'conectiva' | 'emerald' | 'blue' | 'amber' | 'red' | 'violet'
  *   trend      — Percentage change (positive = up, negative = down, 0 = neutral)
  *   trendLabel — Custom label for trend (e.g. "vs semana passada")
  *   loading    — Show skeleton state
  */
-export default function MetricCard({ icon: Icon, label, value, sub, color = 'emerald', trend, trendLabel, loading = false }) {
-  const palette = COLOR_MAP[color] || COLOR_MAP.emerald;
+export default function MetricCard({ icon: Icon, label, value, sub, color = 'conectiva', trend, trendLabel, loading = false }) {
+  const palette = COLOR_MAP[color] || COLOR_MAP.conectiva;
 
   if (loading) {
     return (
@@ -55,7 +60,7 @@ export default function MetricCard({ icon: Icon, label, value, sub, color = 'eme
   }
 
   const trendColor =
-    trend > 0 ? 'text-emerald-400' :
+    trend > 0 ? 'text-conectiva-400' :
     trend < 0 ? 'text-red-400' :
     'text-slate-500';
 

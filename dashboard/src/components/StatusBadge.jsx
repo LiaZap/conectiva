@@ -1,6 +1,6 @@
 const STYLES = {
   // session status
-  ativa:              'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30',
+  ativa:              'bg-conectiva-500/15 text-conectiva-400 border border-conectiva-500/30',
   aguardando_humano:  'bg-red-500/15 text-red-400 border border-red-500/30',
   finalizada:         'bg-slate-500/15 text-slate-400 border border-slate-500/30',
   expirada:           'bg-slate-600/15 text-slate-500 border border-slate-600/30',
@@ -15,7 +15,7 @@ const STYLES = {
   // escalation status
   pendente:           'bg-amber-500/15 text-amber-400 border border-amber-500/30',
   em_atendimento:     'bg-blue-500/15 text-blue-400 border border-blue-500/30',
-  resolvido:          'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30',
+  resolvido:          'bg-conectiva-500/15 text-conectiva-400 border border-conectiva-500/30',
   cancelado:          'bg-slate-600/15 text-slate-500 border border-slate-600/30',
   // intencoes
   SEGUNDA_VIA:        'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30',
@@ -55,7 +55,7 @@ const LABELS = {
 
 // Dot indicator colors (pulsing for active states)
 const DOT_COLORS = {
-  ativa: 'bg-emerald-400 animate-pulse',
+  ativa: 'bg-conectiva-400 animate-pulse',
   aguardando_humano: 'bg-red-400 animate-pulse',
   pendente: 'bg-amber-400 animate-pulse',
   em_atendimento: 'bg-blue-400 animate-pulse',

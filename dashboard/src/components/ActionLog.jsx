@@ -18,13 +18,13 @@ const ICONS = {
 };
 
 const STATUS_COLOR = {
-  sucesso: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/30',
+  sucesso: 'text-conectiva-400 bg-conectiva-400/10 border-conectiva-400/30',
   erro: 'text-red-400 bg-red-400/10 border-red-400/30',
   executando: 'text-amber-400 bg-amber-400/10 border-amber-400/30',
 };
 
 const STATUS_DOT = {
-  sucesso: 'bg-emerald-400',
+  sucesso: 'bg-conectiva-400',
   erro: 'bg-red-400',
   executando: 'bg-amber-400 animate-pulse',
 };
@@ -63,7 +63,7 @@ function CollapsibleJSON({ label, data }) {
             className="absolute top-1.5 right-1.5 p-1 rounded hover:bg-slate-700/50 transition-colors opacity-60 hover:opacity-100"
             title="Copiar JSON"
           >
-            {copied ? <Check size={10} className="text-emerald-400" /> : <Copy size={10} />}
+            {copied ? <Check size={10} className="text-conectiva-400" /> : <Copy size={10} />}
           </button>
           <pre className="text-[10px] leading-relaxed p-2 pr-7 overflow-x-auto max-h-48 text-slate-300 scrollbar-thin">
             {jsonStr}
@@ -144,7 +144,7 @@ export default function ActionLog({ actions = [], compact = false }) {
       {!compact && total > 1 && (
         <div className="flex items-center gap-3 text-[10px] text-slate-500 px-1 pb-1 border-b border-slate-700/50">
           <span>{total} ações</span>
-          {sucesso > 0 && <span className="text-emerald-400">{sucesso} ok</span>}
+          {sucesso > 0 && <span className="text-conectiva-400">{sucesso} ok</span>}
           {erros > 0 && <span className="text-red-400">{erros} erro(s)</span>}
           {tempoTotal > 0 && <span className="ml-auto tabular-nums">{tempoTotal}ms total</span>}
         </div>

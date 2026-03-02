@@ -203,7 +203,7 @@ export default function LiveMonitor() {
     <div className="flex flex-col h-full">
       {/* Top metrics bar */}
       <div className="grid grid-cols-4 gap-3 p-4 border-b border-slate-700">
-        <MetricCard icon={Radio} label="Ativos agora" value={overview.sessoes_ativas_agora} color="emerald" />
+        <MetricCard icon={Radio} label="Ativos agora" value={overview.sessoes_ativas_agora} color="conectiva" />
         <MetricCard icon={Users} label="Escalonados" value={overview.total_escalonados} color="red" />
         <MetricCard icon={CheckCircle} label="Resolvidos hoje" value={overview.total_automaticos} color="blue" />
         <MetricCard icon={Zap} label="Taxa automática" value={overview.taxa_resolucao_automatica ? `${overview.taxa_resolucao_automatica}%` : '—'} color="amber" />
@@ -293,7 +293,7 @@ export default function LiveMonitor() {
                     Ver detalhes
                   </button>
                   {isHumanAttending ? (
-                    <button onClick={handleRelease} className="text-xs px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors flex items-center gap-1">
+                    <button onClick={handleRelease} className="text-xs px-3 py-1.5 rounded-lg bg-conectiva-600 hover:bg-conectiva-500 text-white transition-colors flex items-center gap-1">
                       <Bot size={12} /> Devolver ao Bot
                     </button>
                   ) : (
@@ -347,7 +347,7 @@ export default function LiveMonitor() {
                     disabled={!replyText.trim() || sending}
                     className={`shrink-0 p-2.5 rounded-lg transition-colors flex items-center justify-center ${
                       replyText.trim() && !sending
-                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                        ? 'bg-conectiva-600 hover:bg-conectiva-500 text-white'
                         : 'bg-slate-700 text-slate-500 cursor-not-allowed'
                     }`}
                     title="Enviar mensagem (Enter)"

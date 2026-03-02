@@ -28,19 +28,19 @@ export default function ChatBubble(props) {
         className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm ${
           isClient
             ? 'bg-slate-700 text-slate-100 rounded-bl-md'
-            : 'bg-blue-600 text-white rounded-br-md'
+            : 'bg-conectiva-600 text-white rounded-br-md'
         }`}
       >
         <p className="whitespace-pre-wrap break-words">{conteudo}</p>
         {time && (
-          <span className={`block text-[10px] mt-1 text-right ${isClient ? 'text-slate-400' : 'text-blue-200'}`}>
+          <span className={`block text-[10px] mt-1 text-right ${isClient ? 'text-slate-400' : 'text-conectiva-200'}`}>
             {time}
           </span>
         )}
       </div>
 
       {!isClient && (
-        <div className="w-7 h-7 rounded-full bg-blue-700 flex items-center justify-center shrink-0 mt-1">
+        <div className="w-7 h-7 rounded-full bg-conectiva-700 flex items-center justify-center shrink-0 mt-1">
           <Bot size={14} />
         </div>
       )}

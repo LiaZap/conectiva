@@ -122,7 +122,7 @@ export default function SessionDetail() {
           {interactions.filter((i) => i.mk_endpoint).map((ix, i) => (
             <div key={ix.id || i} className="border border-slate-700 rounded-lg p-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-mono text-emerald-400">{ix.mk_endpoint}</span>
+                <span className="text-sm font-mono text-conectiva-400">{ix.mk_endpoint}</span>
                 <div className="flex items-center gap-2">
                   <StatusBadge value={ix.mk_sucesso ? 'resolvido' : 'critica'} />
                   {ix.tempo_mk_ms != null && <span className="text-xs text-slate-400">{ix.tempo_mk_ms}ms</span>}

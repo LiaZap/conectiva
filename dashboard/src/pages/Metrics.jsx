@@ -18,13 +18,13 @@ const PERIODO_OPTS = [
   { value: 'mes', label: '30 dias' },
 ];
 
-const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+const COLORS = ['#0693e3', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 const TOOLTIP_STYLE = { background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 12, color: '#e2e8f0' };
 
 // ---- Gauge component (radial bar) ----
 function GaugeChart({ value, meta, label }) {
   const pct = value ?? 0;
-  const data = [{ name: label, value: pct, fill: pct >= meta ? '#10b981' : pct >= meta * 0.7 ? '#f59e0b' : '#ef4444' }];
+  const data = [{ name: label, value: pct, fill: pct >= meta ? '#0693e3' : pct >= meta * 0.7 ? '#f59e0b' : '#ef4444' }];
 
   return (
     <div className="relative">
@@ -55,7 +55,7 @@ function HeatmapGrid({ data }) {
           const row = data.find((d) => d.endpoint === ep);
           const total = row?.total ?? 0;
           const intensity = Math.round((total / maxTotal) * 100);
-          const bg = intensity > 75 ? 'bg-emerald-500' : intensity > 50 ? 'bg-emerald-600' : intensity > 25 ? 'bg-emerald-700' : 'bg-emerald-900';
+          const bg = intensity > 75 ? 'bg-conectiva-500' : intensity > 50 ? 'bg-conectiva-600' : intensity > 25 ? 'bg-conectiva-700' : 'bg-conectiva-900';
 
           return (
             <div key={ep} className="flex items-center gap-2">
@@ -66,7 +66,7 @@ function HeatmapGrid({ data }) {
                 </div>
               </div>
               <div className="flex gap-1 text-[10px] w-20 shrink-0">
-                <span className="text-emerald-400">{row?.sucesso ?? 0}</span>
+                <span className="text-conectiva-400">{row?.sucesso ?? 0}</span>
                 <span className="text-slate-600">/</span>
                 <span className="text-red-400">{row?.erro ?? 0}</span>
               </div>
@@ -114,7 +114,7 @@ export default function Metrics() {
         <div className="flex gap-1 bg-slate-800 rounded-lg p-1">
           {PERIODO_OPTS.map((o) => (
             <button key={o.value} onClick={() => setPeriodo(o.value)}
-              className={`text-xs px-3 py-1.5 rounded-md transition-colors ${periodo === o.value ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>
+              className={`text-xs px-3 py-1.5 rounded-md transition-colors ${periodo === o.value ? 'bg-conectiva-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>
               {o.label}
             </button>
           ))}
@@ -124,7 +124,7 @@ export default function Metrics() {
       {/* LINHA 1 — Cards grandes + Gauge */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
-          icon={Activity} label="Total atendimentos" color="emerald"
+          icon={Activity} label="Total atendimentos" color="conectiva"
           value={overview.total_atendimentos ?? '—'}
         />
 
@@ -140,7 +140,7 @@ export default function Metrics() {
         />
 
         <MetricCard
-          icon={AlertTriangle} label="Escalonamentos pendentes" color={overview.total_escalonados > 0 ? 'red' : 'emerald'}
+          icon={AlertTriangle} label="Escalonamentos pendentes" color={overview.total_escalonados > 0 ? 'red' : 'conectiva'}
           value={overview.total_escalonados ?? 0}
           sub={overview.total_escalonados > 0 ? 'Requer atenção' : 'Tudo em dia'}
         />
@@ -158,7 +158,7 @@ export default function Metrics() {
               <Tooltip contentStyle={TOOLTIP_STYLE} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Line type="monotone" dataKey="total" stroke="#3b82f6" strokeWidth={2} dot={false} name="Total" />
-              <Line type="monotone" dataKey="automaticos" stroke="#10b981" strokeWidth={2} dot={false} name="Automáticos" />
+              <Line type="monotone" dataKey="automaticos" stroke="#0693e3" strokeWidth={2} dot={false} name="Automáticos" />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -203,7 +203,7 @@ export default function Metrics() {
               <XAxis dataKey="dia" tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={(v) => v?.slice(5)} />
               <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} unit="%" />
               <Tooltip contentStyle={TOOLTIP_STYLE} />
-              <Bar dataKey="taxa" radius={[4, 4, 0, 0]} fill="#10b981" name="Taxa %" />
+              <Bar dataKey="taxa" radius={[4, 4, 0, 0]} fill="#0693e3" name="Taxa %" />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -255,7 +255,7 @@ export default function Metrics() {
             <Legend wrapperStyle={{ fontSize: 11 }} />
             <Line type="monotone" dataKey="avg_ia_ms" stroke="#3b82f6" strokeWidth={2} dot={false} name="IA (classificação)" />
             <Line type="monotone" dataKey="avg_mk_ms" stroke="#f59e0b" strokeWidth={2} dot={false} name="API MK" />
-            <Line type="monotone" dataKey="avg_total_ms" stroke="#10b981" strokeWidth={2} dot={false} name="Total" />
+            <Line type="monotone" dataKey="avg_total_ms" stroke="#0693e3" strokeWidth={2} dot={false} name="Total" />
           </LineChart>
         </ResponsiveContainer>
       </div>

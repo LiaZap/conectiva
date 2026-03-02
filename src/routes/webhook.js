@@ -392,18 +392,62 @@ async function processMessage(canal, body, replyFn) {
   }
 }
 
+// ── Respostas para tipos de mídia ─────────────────────────
+const MEDIA_RESPONSES = {
+  audio: '🎤 Recebi seu áudio! No momento ainda não consigo ouvir áudios, mas estou aqui para te ajudar. Poderia digitar sua solicitação, por favor? 😊',
+  image: '📷 Recebi sua imagem! Infelizmente ainda não consigo analisar imagens, mas posso te ajudar por texto. O que você precisa? 😊',
+  video: '🎥 Recebi seu vídeo! No momento não consigo assistir vídeos, mas ficarei feliz em te ajudar por texto. Qual a sua solicitação? 😊',
+  document: '📄 Recebi seu documento! Ainda não consigo ler documentos, mas posso te ajudar por texto. Me conta o que você precisa? 😊',
+  sticker: '', // Figurinhas são ignoradas silenciosamente
+};
+
 // --- POST /webhook/whatsapp ---
 router.post('/webhook/whatsapp', async (req, res) => {
   try {
     // Normalizar para extrair dados
-    const { from, message, pushName, fromMe } = normalizeChannel(req.body, 'whatsapp');
+    const { from, message, pushName, fromMe, messageType, isIgnored } = normalizeChannel(req.body, 'whatsapp');
 
-    // Ignorar mensagens do próprio bot ou vazias
-    if (fromMe || !message) {
+    // Ignorar mensagens do próprio bot
+    if (fromMe) {
+      return res.json({ success: true });
+    }
+
+    // Ignorar tipos que não precisam de resposta (reações, recibos, etc.)
+    if (isIgnored) {
+      console.log(`[webhook] Ignorando tipo: ${messageType}`);
       return res.json({ success: true });
     }
 
     const telefone = formatPhone(from);
+
+    // Tratar mensagens de mídia (áudio, imagem, vídeo, documento, sticker)
+    if (messageType !== 'text' && messageType !== 'unknown') {
+      const mediaResponse = MEDIA_RESPONSES[messageType];
+
+      if (mediaResponse) {
+        // Responder informando que não processa mídia
+        console.log(`[webhook] Mídia recebida: ${messageType} de ${telefone}`);
+        await sendText(telefone, mediaResponse);
+
+        // Se a mídia tinha legenda/caption, processar como texto
+        if (message && message.trim()) {
+          console.log(`[webhook] Mídia com caption, processando texto: "${message.substring(0, 80)}"`);
+          bufferMessage(telefone, message, 'whatsapp', pushName, sendText);
+        }
+      } else if (messageType === 'sticker') {
+        // Sticker: ignorar silenciosamente
+        console.log(`[webhook] Sticker ignorado de ${telefone}`);
+      } else {
+        console.log(`[webhook] Tipo desconhecido: ${messageType} de ${telefone}`);
+      }
+
+      return res.json({ success: true });
+    }
+
+    // Ignorar mensagens vazias
+    if (!message || !message.trim()) {
+      return res.json({ success: true });
+    }
 
     // Usar buffer (debounce) — acumula mensagens por 15s
     bufferMessage(telefone, message, 'whatsapp', pushName, sendText);

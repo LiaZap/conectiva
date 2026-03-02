@@ -149,20 +149,24 @@ export function normalizeUazapiPayload(body) {
       console.log('[normalizer] Payload áudio — campos:', { dataKeys: debugKeys, contentKeys, hasUrl: !!data.url, hasMediaUrl: !!data.mediaUrl, hasBase64: !!data.base64 });
     }
 
-    // URL direta
-    mediaUrl = data.url || data.mediaUrl || data.fileUrl || data.media || null;
+    // URL direta (Uazapi pode usar "URL" maiúsculo ou "url" minúsculo)
+    mediaUrl = data.url || data.URL || data.mediaUrl || data.fileUrl || data.media || null;
 
-    // URL dentro do content
+    // URL dentro do content (Uazapi envia content.URL em maiúsculo!)
     if (!mediaUrl && data.content && typeof data.content === 'object') {
-      mediaUrl = data.content.url || data.content.mediaUrl || data.content.fileUrl || data.content.media || null;
-      // Dentro de sub-objetos de mídia
+      mediaUrl = data.content.url || data.content.URL || data.content.mediaUrl || data.content.fileUrl || data.content.media || null;
+      // Mimetype direto no content (Uazapi: content.mimetype)
+      if (!mediaMimetype && data.content.mimetype) {
+        mediaMimetype = data.content.mimetype;
+      }
+      // Dentro de sub-objetos de mídia (formato alternativo)
       const mediaObj = data.content.imageMessage || data.content.audioMessage ||
         data.content.videoMessage || data.content.documentMessage ||
         data.content.pttMessage || data.content.stickerMessage;
       if (mediaObj) {
-        mediaUrl = mediaUrl || mediaObj.url || null;
+        mediaUrl = mediaUrl || mediaObj.url || mediaObj.URL || null;
         mediaFilename = mediaObj.fileName || mediaObj.filename || null;
-        mediaMimetype = mediaObj.mimetype || null;
+        mediaMimetype = mediaMimetype || mediaObj.mimetype || null;
       }
     }
 

@@ -125,9 +125,39 @@ export function normalizeUazapiPayload(body) {
     data = data.message;
   }
 
-  // Extrair telefone: sender/chatid vem como "5511999999999@s.whatsapp.net"
-  const rawPhone = data.phone || data.sender || data.chatid || data.from || data.number || '';
-  const from = rawPhone.replace(/@.*$/, '').replace(/\D/g, '');
+  // Extrair telefone: priorizar campos com número real, evitar LIDs (Linked IDs)
+  // sender_pn = phone number real, chatid = "5511...@s.whatsapp.net"
+  // sender pode vir como LID ("162801...@lid") que NÃO é telefone
+  const candidatos = [
+    data.sender_pn,                    // Uazapi: phone number real (prioridade máxima)
+    data.phone,                         // Número direto
+    data.chatid,                        // Chat ID (geralmente tem o número real)
+    data.from,                          // Alternativa
+    data.number,                        // Alternativa
+    data.sender,                        // Pode ser LID — última opção
+  ];
+
+  let rawPhone = '';
+  for (const c of candidatos) {
+    if (!c || typeof c !== 'string') continue;
+    const clean = c.replace(/@.*$/, '').replace(/\D/g, '');
+    // Ignorar LIDs: se o campo original contém "@lid" ou o número não parece telefone BR/internacional
+    if (c.includes('@lid')) continue;
+    // Telefone BR tem 12-13 dígitos (com DDI 55), internacional pode ter 10-15
+    if (clean.length >= 10 && clean.length <= 15) {
+      rawPhone = clean;
+      break;
+    }
+  }
+
+  // Fallback: se não achou nenhum válido, usar qualquer um disponível
+  if (!rawPhone) {
+    const fallback = data.sender_pn || data.phone || data.chatid || data.sender || data.from || data.number || '';
+    rawPhone = fallback.replace(/@.*$/, '').replace(/\D/g, '');
+    console.log('[normalizer] AVISO: usando fallback para telefone:', { rawPhone, original: fallback });
+  }
+
+  const from = rawPhone;
 
   // Detectar tipo da mensagem
   const messageType = detectMessageType(data);

@@ -5,8 +5,12 @@ import * as logger from '../services/logger.js';
 import { sendText } from '../services/whatsapp.js';
 import { execute as n8nExecute } from '../services/n8n.js';
 import { emit, emitToSession, EVENTS } from '../websocket/events.js';
+import { requireAuth } from '../middleware/security.js';
 
 const router = Router();
+
+// ── Autenticação obrigatória para todas as rotas de API ──
+router.use(requireAuth);
 
 // ============================================================
 // SESSIONS

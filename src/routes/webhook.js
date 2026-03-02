@@ -8,6 +8,7 @@ import { execute as n8nExecute } from '../services/n8n.js';
 import { sendText, sendDocument } from '../services/whatsapp.js';
 import { analisarNegociacao } from '../services/negotiation.js';
 import { classify, formatResponse, generateDiagnostic } from '../services/ai.js';
+import { transcribeAudio } from '../services/audio.js';
 import { emit, emitToSession, EVENTS } from '../websocket/events.js';
 
 const router = Router();
@@ -411,8 +412,8 @@ const MEDIA_RESPONSES = {
 // --- POST /webhook/whatsapp ---
 router.post('/webhook/whatsapp', async (req, res) => {
   try {
-    // Normalizar para extrair dados
-    const { from, message, pushName, fromMe, messageType, isIgnored } = normalizeChannel(req.body, 'whatsapp');
+    // Normalizar para extrair dados (incluindo campos de mídia para áudio)
+    const { from, message, pushName, fromMe, messageType, isIgnored, mediaUrl, mediaMimetype, mediaFilename } = normalizeChannel(req.body, 'whatsapp');
 
     // Ignorar mensagens do próprio bot
     if (fromMe) {
@@ -429,20 +430,72 @@ router.post('/webhook/whatsapp', async (req, res) => {
 
     // Tratar mensagens de mídia (áudio, imagem, vídeo, documento, sticker)
     if (messageType !== 'text' && messageType !== 'unknown') {
+
+      // ── ÁUDIO: transcrever com Whisper ──
+      if (messageType === 'audio') {
+        console.log(`[webhook] Áudio recebido de ${telefone}, tentando transcrever...`);
+
+        try {
+          // Obter/criar sessão para emitir eventos WS
+          const session = await sessionService.findOrCreate({ telefone, canal: 'whatsapp', pushName });
+          emit(EVENTS.TRANSCREVENDO_AUDIO, { session_id: session.id, telefone });
+          emitToSession(session.id, EVENTS.TRANSCREVENDO_AUDIO, { telefone });
+
+          if (mediaUrl) {
+            const result = await transcribeAudio(mediaUrl, mediaMimetype, mediaFilename);
+
+            // Logar tentativa de transcrição
+            await logger.saveAction({
+              session_id: session.id,
+              interaction_id: null,
+              acao: 'TRANSCRICAO_AUDIO',
+              descricao: result.success
+                ? `Áudio transcrito: "${result.text?.substring(0, 100)}"`
+                : `Falha na transcrição: ${result.error}`,
+              status: result.success ? 'sucesso' : 'erro',
+              dados_entrada: { mediaUrl: mediaUrl?.substring(0, 200), mediaMimetype },
+              dados_saida: result.success ? { texto: result.text } : { error: result.error },
+              tempo_ms: result.tempo_ms || 0,
+            });
+
+            if (result.success && result.text) {
+              // SUCESSO: alimentar texto transcrito no pipeline normal
+              console.log(`[webhook] Áudio transcrito, processando: "${result.text.substring(0, 80)}"`);
+              bufferMessage(telefone, result.text, 'whatsapp', pushName, sendText);
+              return res.json({ success: true });
+            }
+          }
+
+          // FALLBACK: não conseguiu transcrever
+          console.log(`[webhook] Não foi possível transcrever áudio de ${telefone}`);
+          const fallbackMsg = '🎤 Recebi seu áudio, mas não consegui entendê-lo no momento. Poderia digitar sua mensagem, por favor? 😊';
+          await sendText(telefone, fallbackMsg);
+
+          // Se o áudio tinha caption, processar
+          if (message && message.trim()) {
+            bufferMessage(telefone, message, 'whatsapp', pushName, sendText);
+          }
+        } catch (audioErr) {
+          console.error('[webhook] Erro ao processar áudio:', audioErr.message);
+          // Fallback seguro
+          await sendText(telefone, '🎤 Recebi seu áudio, mas tive um problema ao processá-lo. Poderia digitar sua mensagem, por favor? 😊').catch(() => {});
+        }
+
+        return res.json({ success: true });
+      }
+
+      // ── Outros tipos de mídia (imagem, vídeo, documento, sticker) ──
       const mediaResponse = MEDIA_RESPONSES[messageType];
 
       if (mediaResponse) {
-        // Responder informando que não processa mídia
         console.log(`[webhook] Mídia recebida: ${messageType} de ${telefone}`);
         await sendText(telefone, mediaResponse);
 
-        // Se a mídia tinha legenda/caption, processar como texto
         if (message && message.trim()) {
           console.log(`[webhook] Mídia com caption, processando texto: "${message.substring(0, 80)}"`);
           bufferMessage(telefone, message, 'whatsapp', pushName, sendText);
         }
       } else if (messageType === 'sticker') {
-        // Sticker: ignorar silenciosamente
         console.log(`[webhook] Sticker ignorado de ${telefone}`);
       } else {
         console.log(`[webhook] Tipo desconhecido: ${messageType} de ${telefone}`);

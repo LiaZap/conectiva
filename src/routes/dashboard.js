@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { query } from '../config/database.js';
+import { requireAuth } from '../middleware/security.js';
 
 const router = Router();
+
+// ── Autenticação obrigatória para todas as rotas de métricas ──
+router.use(requireAuth);
 
 /**
  * Converte o parâmetro ?periodo= em cláusula SQL de data.

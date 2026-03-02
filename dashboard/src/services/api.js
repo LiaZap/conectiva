@@ -8,6 +8,32 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+// ── Interceptor: anexar JWT token ──
+api.interceptors.request.use((cfg) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    cfg.headers.Authorization = `Bearer ${token}`;
+  }
+  return cfg;
+});
+
+// ── Interceptor: tratar 401 (token inválido/expirado) ──
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Não redirecionar se já está na tela de login ou se é a própria chamada de login
+      const isLoginRequest = error.config?.url?.includes('/api/auth/login');
+      const isAuthMe = error.config?.url?.includes('/api/auth/me');
+      if (!isLoginRequest && !isAuthMe) {
+        localStorage.removeItem('token');
+        window.location.href = `${import.meta.env.BASE_URL}login`;
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Sessions
 export const getSessions = (params) => api.get('/api/sessions', { params }).then((r) => r.data);
 export const getSession = (id) => api.get(`/api/sessions/${id}`).then((r) => r.data);

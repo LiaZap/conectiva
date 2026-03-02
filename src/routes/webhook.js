@@ -105,13 +105,20 @@ async function processMessage(canal, body, replyFn) {
   const session = await sessionService.findOrCreate({ telefone, canal, pushName });
   const sid = session.id;
 
-  // 3. Gravar mensagem de entrada
+  // 3. Gravar mensagem de entrada (sempre, mesmo se humano está atendendo)
   await logger.saveMessage({ session_id: sid, direcao: 'entrada', conteudo: message, canal });
   await sessionService.incrementMessages(sid);
 
-  // 4. Emitir nova_mensagem
+  // 4. Emitir nova_mensagem (para o dashboard ver em tempo real)
   emit(EVENTS.NOVA_MENSAGEM, { session_id: sid, canal, telefone, message, pushName });
   emitToSession(sid, EVENTS.NOVA_MENSAGEM, { message, direcao: 'entrada' });
+
+  // 4.5. Se humano está atendendo, NÃO processar com IA
+  // A mensagem já foi gravada e emitida — o atendente humano vê no dashboard
+  if (session.status === 'aguardando_humano') {
+    console.log(`[webhook] Sessão ${sid} em atendimento humano — bot desativado`);
+    return;
+  }
 
   // 5. Buscar histórico + classificar com IA
   const historico = await sessionService.getHistory(sid);

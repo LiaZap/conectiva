@@ -107,10 +107,77 @@ router.post('/api/sessions/:id/takeover', async (req, res) => {
     });
 
     emit(EVENTS.ESCALONAMENTO, { session_id: id, motivo: 'Takeover manual', atendente });
+    // Emitir atualização de sessão para todos os clientes
+    emit(EVENTS.SESSAO_ATUALIZADA, { session_id: id, status: 'aguardando_humano', atendente });
 
-    res.json({ success: true, data: updated });
+    res.json({ success: true, data: updated, message: 'Conversa assumida com sucesso. O bot não responderá mais nesta sessão.' });
   } catch (err) {
     console.error('[api] POST /sessions/:id/takeover erro:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/sessions/:id/release - Devolver sessão ao bot
+router.post('/api/sessions/:id/release', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const session = await sessionService.findById(id);
+    if (!session) return res.status(404).json({ success: false, error: 'Sessão não encontrada' });
+
+    const updated = await sessionService.update(id, {
+      status: 'ativa',
+      resolvida_por: null,
+    });
+
+    emit(EVENTS.SESSAO_ATUALIZADA, { session_id: id, status: 'ativa' });
+
+    res.json({ success: true, data: updated, message: 'Sessão devolvida ao bot.' });
+  } catch (err) {
+    console.error('[api] POST /sessions/:id/release erro:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/sessions/:id/close - Finalizar sessão
+router.post('/api/sessions/:id/close', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const session = await sessionService.findById(id);
+    if (!session) return res.status(404).json({ success: false, error: 'Sessão não encontrada' });
+
+    const updated = await sessionService.update(id, { status: 'finalizada' });
+
+    emit(EVENTS.SESSAO_ENCERRADA, { session_id: id, motivo: 'finalizada_manual' });
+
+    res.json({ success: true, data: updated, message: 'Sessão finalizada.' });
+  } catch (err) {
+    console.error('[api] POST /sessions/:id/close erro:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE /api/sessions/:id - Excluir sessão e dados relacionados
+router.delete('/api/sessions/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const session = await sessionService.findById(id);
+    if (!session) return res.status(404).json({ success: false, error: 'Sessão não encontrada' });
+
+    // Excluir dados relacionados em ordem (FKs)
+    await query('DELETE FROM ai_actions_log WHERE session_id = $1', [id]);
+    await query('DELETE FROM interactions_log WHERE session_id = $1', [id]);
+    await query('DELETE FROM messages WHERE session_id = $1', [id]);
+    await query('DELETE FROM escalations WHERE session_id = $1', [id]);
+    await query('DELETE FROM sessions WHERE id = $1', [id]);
+
+    emit(EVENTS.SESSAO_ENCERRADA, { session_id: id, motivo: 'excluida' });
+
+    res.json({ success: true, message: 'Sessão e dados excluídos.' });
+  } catch (err) {
+    console.error('[api] DELETE /sessions/:id erro:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });

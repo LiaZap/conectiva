@@ -10,6 +10,7 @@ export const EVENTS = {
   RESPOSTA_ENVIADA: 'resposta_enviada',
   ESCALONAMENTO: 'escalonamento',
   SESSAO_ENCERRADA: 'sessao_encerrada',
+  SESSAO_ATUALIZADA: 'sessao_atualizada',
 };
 
 /**

@@ -13,6 +13,9 @@ export const getSessions = (params) => api.get('/api/sessions', { params }).then
 export const getSession = (id) => api.get(`/api/sessions/${id}`).then((r) => r.data);
 export const getSessionActions = (id) => api.get(`/api/sessions/${id}/actions`).then((r) => r.data);
 export const takeoverSession = (id) => api.post(`/api/sessions/${id}/takeover`).then((r) => r.data);
+export const releaseSession = (id) => api.post(`/api/sessions/${id}/release`).then((r) => r.data);
+export const closeSession = (id) => api.post(`/api/sessions/${id}/close`).then((r) => r.data);
+export const deleteSession = (id) => api.delete(`/api/sessions/${id}`).then((r) => r.data);
 
 // Escalations
 export const getEscalations = (params) => api.get('/api/escalations', { params }).then((r) => r.data);

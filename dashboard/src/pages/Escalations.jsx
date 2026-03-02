@@ -151,7 +151,7 @@ export default function Escalations() {
           <div className="flex gap-1 bg-slate-800 rounded-lg p-1">
             {STATUS_OPTS.map((o) => (
               <button key={o.value} onClick={() => setStatusFilter(o.value)}
-                className={`text-xs px-2.5 py-1.5 rounded-md transition-colors ${statusFilter === o.value ? 'bg-conectiva-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>
+                className={`text-xs px-2.5 py-1.5 rounded-md transition-colors ${statusFilter === o.value ? 'bg-dourado-400 text-slate-900 font-semibold' : 'text-slate-400 hover:text-white'}`}>
                 {o.label}
               </button>
             ))}

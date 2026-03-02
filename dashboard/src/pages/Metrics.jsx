@@ -18,7 +18,7 @@ const PERIODO_OPTS = [
   { value: 'mes', label: '30 dias' },
 ];
 
-const COLORS = ['#0693e3', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+const COLORS = ['#0693e3', '#fcb900', '#ffffff', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 const TOOLTIP_STYLE = { background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 12, color: '#e2e8f0' };
 
 // ---- Gauge component (radial bar) ----
@@ -114,7 +114,7 @@ export default function Metrics() {
         <div className="flex gap-1 bg-slate-800 rounded-lg p-1">
           {PERIODO_OPTS.map((o) => (
             <button key={o.value} onClick={() => setPeriodo(o.value)}
-              className={`text-xs px-3 py-1.5 rounded-md transition-colors ${periodo === o.value ? 'bg-conectiva-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>
+              className={`text-xs px-3 py-1.5 rounded-md transition-colors ${periodo === o.value ? 'bg-dourado-400 text-slate-900 font-semibold' : 'text-slate-400 hover:text-white'}`}>
               {o.label}
             </button>
           ))}
@@ -124,7 +124,7 @@ export default function Metrics() {
       {/* LINHA 1 — Cards grandes + Gauge */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
-          icon={Activity} label="Total atendimentos" color="conectiva"
+          icon={Activity} label="Total atendimentos" color="white"
           value={overview.total_atendimentos ?? '—'}
         />
 
@@ -135,7 +135,7 @@ export default function Metrics() {
         </div>
 
         <MetricCard
-          icon={Clock} label="Tempo médio resposta" color="blue"
+          icon={Clock} label="Tempo médio resposta" color="dourado"
           value={overview.tempo_medio_resposta_ms ? `${(overview.tempo_medio_resposta_ms / 1000).toFixed(1)}s` : '—'}
         />
 
@@ -157,8 +157,8 @@ export default function Metrics() {
               <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} />
               <Tooltip contentStyle={TOOLTIP_STYLE} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Line type="monotone" dataKey="total" stroke="#3b82f6" strokeWidth={2} dot={false} name="Total" />
-              <Line type="monotone" dataKey="automaticos" stroke="#0693e3" strokeWidth={2} dot={false} name="Automáticos" />
+              <Line type="monotone" dataKey="total" stroke="#0693e3" strokeWidth={2} dot={false} name="Total" />
+              <Line type="monotone" dataKey="automaticos" stroke="#fcb900" strokeWidth={2} dot={false} name="Automáticos" />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -253,9 +253,9 @@ export default function Metrics() {
             <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} unit="ms" />
             <Tooltip contentStyle={TOOLTIP_STYLE} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Line type="monotone" dataKey="avg_ia_ms" stroke="#3b82f6" strokeWidth={2} dot={false} name="IA (classificação)" />
-            <Line type="monotone" dataKey="avg_mk_ms" stroke="#f59e0b" strokeWidth={2} dot={false} name="API MK" />
-            <Line type="monotone" dataKey="avg_total_ms" stroke="#0693e3" strokeWidth={2} dot={false} name="Total" />
+            <Line type="monotone" dataKey="avg_ia_ms" stroke="#0693e3" strokeWidth={2} dot={false} name="IA (classificação)" />
+            <Line type="monotone" dataKey="avg_mk_ms" stroke="#fcb900" strokeWidth={2} dot={false} name="API MK" />
+            <Line type="monotone" dataKey="avg_total_ms" stroke="#ffffff" strokeWidth={2} dot={false} name="Total" />
           </LineChart>
         </ResponsiveContainer>
       </div>

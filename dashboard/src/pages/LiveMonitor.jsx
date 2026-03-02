@@ -205,8 +205,8 @@ export default function LiveMonitor() {
       <div className="grid grid-cols-4 gap-3 p-4 border-b border-slate-700">
         <MetricCard icon={Radio} label="Ativos agora" value={overview.sessoes_ativas_agora} color="conectiva" />
         <MetricCard icon={Users} label="Escalonados" value={overview.total_escalonados} color="red" />
-        <MetricCard icon={CheckCircle} label="Resolvidos hoje" value={overview.total_automaticos} color="blue" />
-        <MetricCard icon={Zap} label="Taxa automática" value={overview.taxa_resolucao_automatica ? `${overview.taxa_resolucao_automatica}%` : '—'} color="amber" />
+        <MetricCard icon={CheckCircle} label="Resolvidos hoje" value={overview.total_automaticos} color="white" />
+        <MetricCard icon={Zap} label="Taxa automática" value={overview.taxa_resolucao_automatica ? `${overview.taxa_resolucao_automatica}%` : '—'} color="dourado" />
       </div>
 
       {/* 3-column layout */}
@@ -214,7 +214,7 @@ export default function LiveMonitor() {
         {/* LEFT — Session list */}
         <div className="w-80 shrink-0 border-r border-slate-700 overflow-y-auto">
           <div className="p-3 border-b border-slate-700">
-            <h2 className="text-sm font-semibold text-slate-300">Sessões</h2>
+            <h2 className="text-sm font-semibold text-white">Sessões</h2>
           </div>
           <div className="space-y-1 p-2">
             {sessions.map((s) => (
@@ -347,7 +347,7 @@ export default function LiveMonitor() {
                     disabled={!replyText.trim() || sending}
                     className={`shrink-0 p-2.5 rounded-lg transition-colors flex items-center justify-center ${
                       replyText.trim() && !sending
-                        ? 'bg-conectiva-600 hover:bg-conectiva-500 text-white'
+                        ? 'bg-dourado-400 hover:bg-dourado-300 text-slate-900'
                         : 'bg-slate-700 text-slate-500 cursor-not-allowed'
                     }`}
                     title="Enviar mensagem (Enter)"
@@ -372,7 +372,7 @@ export default function LiveMonitor() {
         {/* RIGHT — Action timeline */}
         <div className="w-72 shrink-0 border-l border-slate-700 overflow-y-auto">
           <div className="p-3 border-b border-slate-700">
-            <h2 className="text-sm font-semibold text-slate-300">Ações da IA</h2>
+            <h2 className="text-sm font-semibold text-white">Ações da IA</h2>
           </div>
           {selectedId ? <ActionLog actions={actions} /> : (
             <p className="text-sm text-slate-500 p-4 text-center">Selecione uma sessão</p>

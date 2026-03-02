@@ -6,6 +6,16 @@ const COLOR_MAP = {
     bg: 'bg-conectiva-500/10',
     iconBg: 'bg-conectiva-500/15',
   },
+  dourado: {
+    text: 'text-dourado-400',
+    bg: 'bg-dourado-400/10',
+    iconBg: 'bg-dourado-400/15',
+  },
+  white: {
+    text: 'text-white',
+    bg: 'bg-white/5',
+    iconBg: 'bg-white/10',
+  },
   emerald: {
     text: 'text-emerald-400',
     bg: 'bg-emerald-500/10',
@@ -39,7 +49,7 @@ const COLOR_MAP = {
  *   label      — Metric label (e.g. "Total atendimentos")
  *   value      — Main value (string | number)
  *   sub        — Subtitle text
- *   color      — 'conectiva' | 'emerald' | 'blue' | 'amber' | 'red' | 'violet'
+ *   color      — 'conectiva' | 'dourado' | 'white' | 'emerald' | 'blue' | 'amber' | 'red' | 'violet'
  *   trend      — Percentage change (positive = up, negative = down, 0 = neutral)
  *   trendLabel — Custom label for trend (e.g. "vs semana passada")
  *   loading    — Show skeleton state

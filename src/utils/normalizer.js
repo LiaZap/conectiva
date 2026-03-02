@@ -129,7 +129,8 @@ export function normalizeUazapiPayload(body) {
   // sender_pn = phone number real, chatid = "5511...@s.whatsapp.net"
   // sender pode vir como LID ("162801...@lid") que NÃO é telefone
   const candidatos = [
-    data.chatid,                        // Uazapi: sempre tem o telefone correto (prioridade máxima)
+    data.wa_chatid || data.Wa_Chatid,   // Uazapi: sempre tem o telefone correto (prioridade máxima)
+    data.chatid,                        // Chat ID alternativo
     data.sender_pn,                     // Uazapi: phone number real
     data.phone,                         // Número direto
     data.from,                          // Alternativa

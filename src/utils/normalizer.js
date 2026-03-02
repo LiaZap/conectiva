@@ -235,6 +235,12 @@ export function normalizeUazapiPayload(body) {
     messageType === 'reaction' ||
     messageType === 'ignored';
 
+  // Extrair ID da mensagem (necessário para download via /message/download da Uazapi)
+  const messageId = data.id || data.messageId || data.key?.id || data.content?.key?.id || null;
+  if (messageType === 'audio') {
+    console.log('[normalizer] messageId extraído:', messageId);
+  }
+
   return {
     from,
     message: typeof message === 'string' ? message : '',
@@ -251,6 +257,8 @@ export function normalizeUazapiPayload(body) {
     mediaKey,
     fileSHA256,
     fileLength,
+    // ID da mensagem (para download via Uazapi /message/download)
+    messageId,
   };
 }
 

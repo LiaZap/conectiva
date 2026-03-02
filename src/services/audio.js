@@ -48,11 +48,14 @@ async function whisperTranscribe(audioBuffer, mimetype, filename) {
   const ext = getExtension(mimetype, filename);
   const finalFilename = filename || `audio.${ext}`;
 
+  // Limpar mimetype: remover parâmetros como "; codecs=opus" que Whisper não aceita
+  const cleanMime = (mimetype || 'audio/ogg').split(';')[0].trim();
+
   const file = new File([audioBuffer], finalFilename, {
-    type: mimetype || 'audio/ogg',
+    type: cleanMime,
   });
 
-  console.log('[audio] Transcrevendo com Whisper...', { bytes: audioBuffer.length, filename: finalFilename });
+  console.log('[audio] Transcrevendo com Whisper...', { bytes: audioBuffer.length, filename: finalFilename, mimeOriginal: mimetype, mimeClean: cleanMime });
   const transcription = await openai.audio.transcriptions.create({
     model: 'whisper-1',
     file,
@@ -136,6 +139,13 @@ export async function transcribeAudio(audioUrl, mimetype, filename) {
 
     if (audioBuffer.length === 0) {
       return { success: false, error: 'Áudio vazio (0 bytes)', tempo_ms: Date.now() - start };
+    }
+
+    // Verificar se o conteúdo é HTML (erro de download) ou dados muito pequenos para ser áudio
+    const headerStr = audioBuffer.slice(0, 20).toString('utf-8').toLowerCase();
+    if (headerStr.includes('<html') || headerStr.includes('<!doc') || headerStr.includes('<?xml')) {
+      console.log('[audio] Download retornou HTML ao invés de áudio');
+      return { success: false, error: 'URL retornou HTML (possível erro de autenticação ou URL expirada)', tempo_ms: Date.now() - start };
     }
 
     if (audioBuffer.length > 25 * 1024 * 1024) {

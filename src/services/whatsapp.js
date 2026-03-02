@@ -51,43 +51,76 @@ export async function sendDocument(telefone, url, filename, caption) {
 }
 
 /**
- * Baixa mídia de áudio descriptografada via API da Uazapi.
- * POST /chat/downloadaudio  { Url, MediaKey, Mimetype, FileSHA256, FileLength }
- * Retorna o áudio descriptografado como Buffer binário.
+ * Baixa mídia de áudio via API da Uazapi.
+ * POST /message/download  { id, return_base64: true }
+ * Retorna o áudio como Buffer binário.
  */
-export async function downloadAudio({ mediaUrl, mediaKey, mimetype, fileSHA256, fileLength }) {
+export async function downloadAudio({ messageId }) {
   try {
-    console.log('[whatsapp] downloadAudio via Uazapi...', { fileLength, mimetype });
+    if (!messageId) {
+      return { success: false, error: 'messageId não disponível para download' };
+    }
+
+    console.log('[whatsapp] downloadAudio via /message/download...', { messageId });
 
     const { data } = await axios.post(
-      `${config.uazapi.baseUrl}/chat/downloadaudio`,
+      `${config.uazapi.baseUrl}/message/download`,
       {
-        Url: mediaUrl,
-        MediaKey: mediaKey,
-        Mimetype: mimetype,
-        FileSHA256: fileSHA256,
-        FileLength: fileLength || 0,
+        id: messageId,
+        return_base64: true,
+        generate_mp3: false,
+        return_link: false,
+        transcribe: false,
+        download_quoted: false,
       },
       {
         headers: {
           'Content-Type': 'application/json',
+          Accept: 'application/json',
           token: config.uazapi.token,
         },
-        responseType: 'arraybuffer',
         timeout: 30_000,
       }
     );
 
-    const buffer = Buffer.from(data);
+    // A resposta pode vir como JSON com base64 ou como buffer direto
+    let buffer = null;
+
+    if (data && typeof data === 'object' && data.base64) {
+      // Resposta JSON com campo base64
+      const cleanBase64 = data.base64.replace(/^data:[^;]+;base64,/, '');
+      buffer = Buffer.from(cleanBase64, 'base64');
+      console.log('[whatsapp] downloadAudio base64 decodificado:', { bytes: buffer.length });
+    } else if (data && typeof data === 'object' && data.data) {
+      // Resposta JSON com campo data (base64)
+      const cleanBase64 = data.data.replace(/^data:[^;]+;base64,/, '');
+      buffer = Buffer.from(cleanBase64, 'base64');
+      console.log('[whatsapp] downloadAudio data decodificado:', { bytes: buffer.length });
+    } else if (Buffer.isBuffer(data) || data instanceof ArrayBuffer) {
+      buffer = Buffer.from(data);
+      console.log('[whatsapp] downloadAudio buffer direto:', { bytes: buffer.length });
+    } else if (typeof data === 'string') {
+      // String base64 direta
+      const cleanBase64 = data.replace(/^data:[^;]+;base64,/, '');
+      buffer = Buffer.from(cleanBase64, 'base64');
+      console.log('[whatsapp] downloadAudio string base64:', { bytes: buffer.length });
+    }
+
+    if (!buffer || buffer.length === 0) {
+      console.log('[whatsapp] downloadAudio resposta inesperada:', JSON.stringify(data).substring(0, 500));
+      return { success: false, error: 'Resposta sem dados de áudio' };
+    }
+
     console.log('[whatsapp] downloadAudio ok', { bytes: buffer.length });
     return { success: true, buffer };
   } catch (err) {
     console.error('[whatsapp] downloadAudio erro:', err.response?.status, err.message);
-    // Tentar extrair mensagem de erro do body
     if (err.response?.data) {
       try {
-        const errText = Buffer.from(err.response.data).toString('utf-8');
-        console.error('[whatsapp] downloadAudio resposta:', errText.substring(0, 300));
+        const errText = typeof err.response.data === 'string'
+          ? err.response.data.substring(0, 300)
+          : JSON.stringify(err.response.data).substring(0, 300);
+        console.error('[whatsapp] downloadAudio resposta:', errText);
       } catch (_) {}
     }
     return { success: false, error: err.message };

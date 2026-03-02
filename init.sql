@@ -51,7 +51,7 @@ CREATE TABLE interactions_log (
     mk_sucesso BOOLEAN,
     mk_resposta JSONB,
     status VARCHAR(20) NOT NULL DEFAULT 'processando'
-        CHECK (status IN ('processando', 'sucesso', 'erro', 'escalonado')),
+        CHECK (status IN ('processando', 'sucesso', 'erro', 'escalonado', 'aguardando_cpf')),
     tempo_classificacao_ms INTEGER,
     tempo_mk_ms INTEGER,
     tempo_resposta_ms INTEGER,

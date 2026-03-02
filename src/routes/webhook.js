@@ -413,7 +413,7 @@ const MEDIA_RESPONSES = {
 router.post('/webhook/whatsapp', async (req, res) => {
   try {
     // Normalizar para extrair dados (incluindo campos de mídia para áudio)
-    const { from, message, pushName, fromMe, messageType, isIgnored, mediaUrl, mediaMimetype, mediaFilename, mediaBase64, mediaKey, fileSHA256, fileLength } = normalizeChannel(req.body, 'whatsapp');
+    const { from, message, pushName, fromMe, messageType, isIgnored, mediaUrl, mediaMimetype, mediaFilename, mediaBase64, mediaKey, fileSHA256, fileLength, messageId } = normalizeChannel(req.body, 'whatsapp');
 
     // Ignorar mensagens do próprio bot
     if (fromMe) {
@@ -449,29 +449,36 @@ router.post('/webhook/whatsapp', async (req, res) => {
           emit(EVENTS.TRANSCREVENDO_AUDIO, { session_id: sid, telefone });
           emitToSession(sid, EVENTS.TRANSCREVENDO_AUDIO, { telefone });
 
-          // Tentar transcrever: 1) via Uazapi download API, 2) via URL direta, 3) via base64
+          // Tentar transcrever: 1) via Uazapi /message/download, 2) via URL direta, 3) via base64
           let result = null;
 
-          // 1) Download descriptografado via Uazapi (método principal)
-          if (mediaUrl && mediaKey) {
-            console.log(`[webhook] Tentando download descriptografado via Uazapi...`);
-            const dl = await downloadAudio({ mediaUrl, mediaKey, mimetype: mediaMimetype, fileSHA256, fileLength });
-            if (dl.success && dl.buffer && dl.buffer.length > 0) {
+          // 1) Download via Uazapi /message/download (método principal — usa messageId)
+          if (messageId) {
+            console.log(`[webhook] Tentando download via Uazapi /message/download... (messageId: ${messageId})`);
+            const dl = await downloadAudio({ messageId });
+            if (dl.success && dl.buffer && dl.buffer.length > 100) {
               result = await transcribeAudioBuffer(dl.buffer, mediaMimetype, mediaFilename);
             } else {
-              console.log(`[webhook] Download Uazapi falhou: ${dl.error}, tentando URL direta...`);
-              // 2) Fallback: tentar URL direta (pode funcionar se não for criptografada)
-              result = await transcribeAudio(mediaUrl, mediaMimetype, mediaFilename);
+              console.log(`[webhook] Download Uazapi falhou: ${dl.error}`);
             }
-          } else if (mediaUrl) {
-            // 2) URL direta (sem mediaKey para descriptografar)
+          } else {
+            console.log(`[webhook] Sem messageId para download via Uazapi`);
+          }
+
+          // 2) Fallback: URL direta (apenas se não for criptografada)
+          if (!result && mediaUrl && !mediaUrl.includes('.enc')) {
+            console.log(`[webhook] Tentando URL direta...`);
             result = await transcribeAudio(mediaUrl, mediaMimetype, mediaFilename);
-          } else if (mediaBase64) {
-            // 3) Base64
+          }
+
+          // 3) Base64 como fallback final
+          if (!result && mediaBase64) {
             console.log(`[webhook] Tentando via base64 (${mediaBase64.length} chars)`);
             result = await transcribeAudioBase64(mediaBase64, mediaMimetype, mediaFilename);
-          } else {
-            console.log(`[webhook] Áudio sem mediaUrl, sem mediaKey e sem base64 de ${telefone}`);
+          }
+
+          if (!result && !messageId && !mediaUrl && !mediaBase64) {
+            console.log(`[webhook] Áudio sem messageId, sem mediaUrl e sem base64 de ${telefone}`);
           }
 
           if (result) {

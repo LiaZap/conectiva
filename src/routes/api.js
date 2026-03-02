@@ -11,9 +11,10 @@ const router = Router();
 // ============================================================
 
 // GET /api/sessions - Listar sessões com filtros e paginação
+// Por padrão mostra apenas sessões das últimas 24h (exceto se filtros específicos forem passados)
 router.get('/api/sessions', async (req, res) => {
   try {
-    const { status, canal, intencao, data_inicio, data_fim, limit = 50, offset = 0 } = req.query;
+    const { status, canal, intencao, data_inicio, data_fim, todas, limit = 50, offset = 0 } = req.query;
 
     const conditions = [];
     const params = [];
@@ -24,6 +25,11 @@ router.get('/api/sessions', async (req, res) => {
     if (intencao)    { conditions.push(`s.intencao_principal = $${idx++}`);   params.push(intencao); }
     if (data_inicio) { conditions.push(`s.created_at >= $${idx++}`);         params.push(data_inicio); }
     if (data_fim)    { conditions.push(`s.created_at <= $${idx++}`);         params.push(data_fim); }
+
+    // Filtro padrão: últimas 24h (exceto se 'todas=true' ou filtros de data foram passados)
+    if (!todas && !data_inicio && !data_fim) {
+      conditions.push(`s.updated_at > NOW() - INTERVAL '24 hours'`);
+    }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 

@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Radio, Users, CheckCircle, Zap, Clock, Trash2, X, UserCheck, Bot } from 'lucide-react';
+import { Radio, Users, CheckCircle, Zap, Clock, Trash2, X, UserCheck, Bot, Send } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useWS } from '../context/WebSocketContext.jsx';
-import { getSessions, getSession, takeoverSession, releaseSession, closeSession, deleteSession, getMetricsOverview } from '../services/api.js';
+import { getSessions, getSession, takeoverSession, releaseSession, closeSession, deleteSession, sendSessionMessage, getMetricsOverview } from '../services/api.js';
 import ChatBubble from '../components/ChatBubble.jsx';
 import ActionLog from '../components/ActionLog.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
@@ -20,8 +20,11 @@ export default function LiveMonitor() {
   const [actions, setActions] = useState([]);
   const [selectedSession, setSelectedSession] = useState(null);
   const [overview, setOverview] = useState({});
-  const [confirmAction, setConfirmAction] = useState(null); // { type, id, label }
+  const [confirmAction, setConfirmAction] = useState(null);
+  const [replyText, setReplyText] = useState('');
+  const [sending, setSending] = useState(false);
   const chatEndRef = useRef(null);
+  const inputRef = useRef(null);
 
   // Load sessions + overview
   const loadSessions = useCallback(() => {
@@ -38,12 +41,9 @@ export default function LiveMonitor() {
   // WS: update session list on new events
   useEffect(() => {
     const unsub1 = subscribe('nova_mensagem', () => loadSessions());
-    const unsub2 = subscribe('sessao_encerrada', () => {
-      loadSessions();
-    });
+    const unsub2 = subscribe('sessao_encerrada', () => loadSessions());
     const unsub3 = subscribe('sessao_atualizada', (data) => {
       loadSessions();
-      // Atualizar sessão selecionada se for a mesma
       if (data.session_id === selectedId) {
         setSelectedSession((prev) => prev ? { ...prev, status: data.status } : prev);
       }
@@ -55,6 +55,7 @@ export default function LiveMonitor() {
   const selectSession = useCallback((id) => {
     if (selectedId) leaveSession(selectedId);
     setSelectedId(id);
+    setReplyText('');
     joinSession(id);
 
     getSession(id).then((r) => {
@@ -74,7 +75,12 @@ export default function LiveMonitor() {
     });
     const unsub2 = subscribe('resposta_enviada', (data) => {
       if (data.session_id !== selectedId) return;
-      setMessages((prev) => [...prev, { direcao: 'saida', conteudo: data.resposta, created_at: data.timestamp }]);
+      setMessages((prev) => [...prev, {
+        direcao: 'saida',
+        conteudo: data.resposta,
+        created_at: data.timestamp,
+        remetente: data.remetente || 'bot',
+      }]);
     });
     const unsub3 = subscribe('ia_classificou', (data) => {
       if (data.session_id !== selectedId) return;
@@ -107,6 +113,8 @@ export default function LiveMonitor() {
       if (result.success) {
         setSelectedSession((prev) => prev ? { ...prev, status: 'aguardando_humano' } : prev);
         loadSessions();
+        // Focar no input de mensagem
+        setTimeout(() => inputRef.current?.focus(), 100);
       }
     } catch (err) {
       console.error('Erro ao assumir:', err);
@@ -160,6 +168,33 @@ export default function LiveMonitor() {
       console.error('Erro ao excluir:', err);
     }
     setConfirmAction(null);
+  };
+
+  const handleSendMessage = async () => {
+    if (!selectedId || !replyText.trim() || sending) return;
+    setSending(true);
+    try {
+      const result = await sendSessionMessage(selectedId, replyText.trim());
+      if (result.success) {
+        setReplyText('');
+        // Auto-assumir no frontend se ainda não estava em modo humano
+        if (!isHumanAttending) {
+          setSelectedSession((prev) => prev ? { ...prev, status: 'aguardando_humano' } : prev);
+          loadSessions();
+        }
+        inputRef.current?.focus();
+      }
+    } catch (err) {
+      console.error('Erro ao enviar:', err);
+    }
+    setSending(false);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
   };
 
   const isHumanAttending = selectedSession?.status === 'aguardando_humano';
@@ -278,12 +313,53 @@ export default function LiveMonitor() {
               {isHumanAttending && (
                 <div className="bg-amber-600/10 border-b border-amber-600/30 px-4 py-2 flex items-center gap-2">
                   <UserCheck size={14} className="text-amber-400" />
-                  <span className="text-xs text-amber-300">Bot desativado — Atendimento humano em andamento. As mensagens do cliente aparecem aqui em tempo real.</span>
+                  <span className="text-xs text-amber-300">Bot desativado — Você está atendendo. Digite sua mensagem abaixo para responder ao cliente.</span>
                 </div>
               )}
+              {/* Chat messages */}
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
                 {messages.map((m, i) => <ChatBubble key={i} {...m} />)}
                 <div ref={chatEndRef} />
+              </div>
+              {/* Input de resposta (sempre visível, mas mais destacado no modo humano) */}
+              <div className={`p-3 border-t ${isHumanAttending ? 'border-amber-600/40 bg-slate-800/80' : 'border-slate-700 bg-slate-900/50'}`}>
+                <div className="flex gap-2 items-end">
+                  <textarea
+                    ref={inputRef}
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder={isHumanAttending ? 'Digite sua resposta para o cliente...' : 'Enviar mensagem como atendente (o bot será pausado)...'}
+                    rows={1}
+                    className={`flex-1 resize-none rounded-lg px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 outline-none transition-colors ${
+                      isHumanAttending
+                        ? 'bg-slate-700 border border-amber-600/40 focus:border-amber-500'
+                        : 'bg-slate-800 border border-slate-600 focus:border-slate-500'
+                    }`}
+                    style={{ minHeight: '40px', maxHeight: '120px' }}
+                    onInput={(e) => {
+                      e.target.style.height = 'auto';
+                      e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+                    }}
+                  />
+                  <button
+                    onClick={handleSendMessage}
+                    disabled={!replyText.trim() || sending}
+                    className={`shrink-0 p-2.5 rounded-lg transition-colors flex items-center justify-center ${
+                      replyText.trim() && !sending
+                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                        : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                    }`}
+                    title="Enviar mensagem (Enter)"
+                  >
+                    <Send size={18} />
+                  </button>
+                </div>
+                {!isHumanAttending && replyText.trim() && (
+                  <p className="text-[10px] text-amber-400/70 mt-1.5 ml-1">
+                    ⚠️ Ao enviar, a sessão será assumida automaticamente e o bot será pausado.
+                  </p>
+                )}
               </div>
             </>
           ) : (

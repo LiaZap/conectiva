@@ -1,8 +1,10 @@
 import { Router } from 'express';
 import { query } from '../config/database.js';
 import * as sessionService from '../services/session.js';
+import * as logger from '../services/logger.js';
+import { sendText } from '../services/whatsapp.js';
 import { execute as n8nExecute } from '../services/n8n.js';
-import { emit, EVENTS } from '../websocket/events.js';
+import { emit, emitToSession, EVENTS } from '../websocket/events.js';
 
 const router = Router();
 
@@ -135,6 +137,52 @@ router.post('/api/sessions/:id/release', async (req, res) => {
     res.json({ success: true, data: updated, message: 'Sessão devolvida ao bot.' });
   } catch (err) {
     console.error('[api] POST /sessions/:id/release erro:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/sessions/:id/send - Humano envia mensagem ao cliente
+router.post('/api/sessions/:id/send', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { message } = req.body;
+
+    if (!message || !message.trim()) {
+      return res.status(400).json({ success: false, error: 'Mensagem não pode ser vazia' });
+    }
+
+    const session = await sessionService.findById(id);
+    if (!session) return res.status(404).json({ success: false, error: 'Sessão não encontrada' });
+
+    // Auto-assumir: se a sessão não está em modo humano, assumir automaticamente
+    if (session.status !== 'aguardando_humano') {
+      await sessionService.update(id, { status: 'aguardando_humano', resolvida_por: 'humano' });
+      emit(EVENTS.SESSAO_ATUALIZADA, { session_id: id, status: 'aguardando_humano' });
+    }
+
+    // Enviar mensagem via WhatsApp (ou outro canal)
+    if (session.canal === 'whatsapp' && session.telefone) {
+      const result = await sendText(session.telefone, message.trim());
+      if (!result.success) {
+        return res.status(502).json({ success: false, error: 'Falha ao enviar mensagem via WhatsApp', details: result.error });
+      }
+    }
+
+    // Gravar mensagem no banco
+    await logger.saveMessage({
+      session_id: id,
+      direcao: 'saida',
+      conteudo: message.trim(),
+      canal: session.canal,
+    });
+
+    // Emitir evento para o dashboard (atualizar chat em tempo real)
+    emit(EVENTS.RESPOSTA_ENVIADA, { session_id: id, resposta: message.trim(), remetente: 'humano' });
+    emitToSession(id, EVENTS.RESPOSTA_ENVIADA, { resposta: message.trim(), direcao: 'saida', remetente: 'humano' });
+
+    res.json({ success: true, message: 'Mensagem enviada com sucesso' });
+  } catch (err) {
+    console.error('[api] POST /sessions/:id/send erro:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });

@@ -86,9 +86,10 @@ export async function downloadAudio({ messageId }) {
     // A resposta pode vir como JSON com base64 ou como buffer direto
     let buffer = null;
 
-    if (data && typeof data === 'object' && data.base64) {
-      // Resposta JSON com campo base64
-      const cleanBase64 = data.base64.replace(/^data:[^;]+;base64,/, '');
+    if (data && typeof data === 'object' && (data.base64 || data.base64Data)) {
+      // Resposta JSON com campo base64 ou base64Data (Uazapi usa base64Data)
+      const raw = data.base64 || data.base64Data;
+      const cleanBase64 = raw.replace(/^data:[^;]+;base64,/, '');
       buffer = Buffer.from(cleanBase64, 'base64');
       console.log('[whatsapp] downloadAudio base64 decodificado:', { bytes: buffer.length });
     } else if (data && typeof data === 'object' && data.data) {

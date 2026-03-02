@@ -187,15 +187,46 @@ export function normalizeUazapiPayload(body) {
   }
 
   // Extrair campos de criptografia de mídia (necessários para download via Uazapi)
-  // A Uazapi/WhatsApp envia: mediaKey, fileSHA256, fileLength no content
+  // WhatsApp envia: mediaKey, fileSha256, fileLength — podem estar no content diretamente
+  // OU dentro do sub-objeto de mídia (audioMessage, pttMessage, etc.)
   let mediaKey = null;
   let fileSHA256 = null;
   let fileLength = null;
   if (data.content && typeof data.content === 'object') {
+    // 1) Direto no content
     mediaKey = data.content.mediaKey || data.content.MediaKey || null;
-    fileSHA256 = data.content.fileSHA256 || data.content.FileSHA256 || null;
+    fileSHA256 = data.content.fileSha256 || data.content.fileSHA256 || data.content.FileSHA256 || null;
     fileLength = data.content.fileLength || data.content.FileLength || null;
+
+    // 2) Dentro do sub-objeto de mídia (audioMessage, pttMessage, imageMessage, etc.)
+    if (!mediaKey) {
+      const mo = data.content.audioMessage || data.content.pttMessage ||
+        data.content.imageMessage || data.content.videoMessage ||
+        data.content.documentMessage || data.content.stickerMessage;
+      if (mo) {
+        mediaKey = mediaKey || mo.mediaKey || mo.MediaKey || null;
+        fileSHA256 = fileSHA256 || mo.fileSha256 || mo.fileSHA256 || mo.FileSHA256 || null;
+        fileLength = fileLength || mo.fileLength || mo.FileLength || null;
+      }
+    }
+
     if (fileLength) fileLength = parseInt(fileLength, 10) || null;
+
+    // Debug: logar campos de criptografia encontrados para áudio
+    if (messageType === 'audio') {
+      console.log('[normalizer] Crypto fields:', { mediaKey: !!mediaKey, fileSHA256: !!fileSHA256, fileLength });
+      if (!mediaKey) {
+        // Dump das chaves do content para identificar onde está o mediaKey
+        const allKeys = Object.keys(data.content);
+        const subObjKeys = {};
+        for (const k of allKeys) {
+          if (data.content[k] && typeof data.content[k] === 'object') {
+            subObjKeys[k] = Object.keys(data.content[k]);
+          }
+        }
+        console.log('[normalizer] Content keys (sem mediaKey):', { allKeys, subObjKeys });
+      }
+    }
   }
 
   // Verificar se deve ser ignorado

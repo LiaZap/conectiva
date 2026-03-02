@@ -12,6 +12,59 @@ import { emit, emitToSession, EVENTS } from '../websocket/events.js';
 
 const router = Router();
 
+// ── Buffer de mensagens (debounce) ──────────────────────
+// Clientes frequentemente enviam várias mensagens seguidas.
+// O buffer acumula mensagens por 15s antes de processar tudo junto.
+const BUFFER_TIMEOUT_MS = 15_000;
+const messageBuffer = new Map(); // Map<telefone, { messages, timer, canal, pushName, replyFn }>
+
+function bufferMessage(telefone, message, canal, pushName, replyFn) {
+  const existing = messageBuffer.get(telefone);
+
+  if (existing) {
+    // Já tem buffer — acumular mensagem e resetar timer
+    clearTimeout(existing.timer);
+    existing.messages.push(message);
+    console.log(`[buffer] Acumulando msg para ${telefone} (${existing.messages.length} msgs)`);
+    existing.timer = setTimeout(() => flushBuffer(telefone), BUFFER_TIMEOUT_MS);
+  } else {
+    // Novo buffer
+    console.log(`[buffer] Novo buffer para ${telefone} (aguardando ${BUFFER_TIMEOUT_MS / 1000}s)`);
+    const entry = {
+      messages: [message],
+      canal,
+      pushName,
+      replyFn,
+      timer: setTimeout(() => flushBuffer(telefone), BUFFER_TIMEOUT_MS),
+    };
+    messageBuffer.set(telefone, entry);
+  }
+}
+
+async function flushBuffer(telefone) {
+  const entry = messageBuffer.get(telefone);
+  if (!entry) return;
+  messageBuffer.delete(telefone);
+
+  // Juntar todas as mensagens em uma só
+  const combinedMessage = entry.messages.join('\n');
+  console.log(`[buffer] Processando ${entry.messages.length} msg(s) de ${telefone}: "${combinedMessage.substring(0, 80)}"`);
+
+  try {
+    await processMessage(entry.canal, {
+      _buffered: true,
+      from: telefone,
+      message: combinedMessage,
+      pushName: entry.pushName,
+    }, entry.replyFn);
+  } catch (err) {
+    console.error('[buffer] Erro ao processar buffer:', err.message);
+    try {
+      await entry.replyFn(telefone, 'Desculpe, ocorreu um erro. Tente novamente em instantes.');
+    } catch (_) { /* silencioso */ }
+  }
+}
+
 /**
  * Pipeline principal de processamento de mensagens.
  * Compartilhado entre WhatsApp e Site.
@@ -19,9 +72,22 @@ const router = Router();
 async function processMessage(canal, body, replyFn) {
   const totalStart = Date.now();
 
-  // 1. Normalizar payload
-  const normalized = normalizeChannel(body, canal);
-  const { from, message, pushName, fromMe } = normalized;
+  // 1. Normalizar payload (ou usar dados já bufferizados)
+  let from, message, pushName, fromMe;
+
+  if (body._buffered) {
+    // Veio do buffer — já está normalizado
+    from = body.from;
+    message = body.message;
+    pushName = body.pushName;
+    fromMe = false;
+  } else {
+    const normalized = normalizeChannel(body, canal);
+    from = normalized.from;
+    message = normalized.message;
+    pushName = normalized.pushName;
+    fromMe = normalized.fromMe;
+  }
 
   console.log('[webhook] Payload recebido:', { canal, from, message: message?.substring(0, 80), pushName, fromMe });
 
@@ -318,14 +384,22 @@ async function processMessage(canal, body, replyFn) {
 // --- POST /webhook/whatsapp ---
 router.post('/webhook/whatsapp', async (req, res) => {
   try {
-    await processMessage('whatsapp', req.body, sendText);
+    // Normalizar para extrair dados
+    const { from, message, pushName, fromMe } = normalizeChannel(req.body, 'whatsapp');
+
+    // Ignorar mensagens do próprio bot ou vazias
+    if (fromMe || !message) {
+      return res.json({ success: true });
+    }
+
+    const telefone = formatPhone(from);
+
+    // Usar buffer (debounce) — acumula mensagens por 15s
+    bufferMessage(telefone, message, 'whatsapp', pushName, sendText);
+
     res.json({ success: true });
   } catch (err) {
     console.error('[webhook] Erro whatsapp:', err);
-    try {
-      const { from } = normalizeChannel(req.body, 'whatsapp');
-      if (from) await sendText(formatPhone(from), 'Desculpe, ocorreu um erro. Tente novamente em instantes.');
-    } catch (_) { /* silencioso */ }
     res.status(500).json({ success: false, error: 'Erro interno' });
   }
 });

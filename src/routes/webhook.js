@@ -8,7 +8,7 @@ import { execute as n8nExecute } from '../services/n8n.js';
 import { sendText, sendDocument } from '../services/whatsapp.js';
 import { analisarNegociacao } from '../services/negotiation.js';
 import { classify, formatResponse, generateDiagnostic } from '../services/ai.js';
-import { transcribeAudio } from '../services/audio.js';
+import { transcribeAudio, transcribeAudioBase64 } from '../services/audio.js';
 import { emit, emitToSession, EVENTS } from '../websocket/events.js';
 
 const router = Router();
@@ -413,7 +413,7 @@ const MEDIA_RESPONSES = {
 router.post('/webhook/whatsapp', async (req, res) => {
   try {
     // Normalizar para extrair dados (incluindo campos de mídia para áudio)
-    const { from, message, pushName, fromMe, messageType, isIgnored, mediaUrl, mediaMimetype, mediaFilename } = normalizeChannel(req.body, 'whatsapp');
+    const { from, message, pushName, fromMe, messageType, isIgnored, mediaUrl, mediaMimetype, mediaFilename, mediaBase64 } = normalizeChannel(req.body, 'whatsapp');
 
     // Ignorar mensagens do próprio bot
     if (fromMe) {
@@ -433,50 +433,73 @@ router.post('/webhook/whatsapp', async (req, res) => {
 
       // ── ÁUDIO: transcrever com Whisper ──
       if (messageType === 'audio') {
-        console.log(`[webhook] Áudio recebido de ${telefone}, tentando transcrever...`);
+        console.log(`[webhook] Áudio recebido de ${telefone}`, { mediaUrl: mediaUrl?.substring(0, 150), mediaMimetype, mediaFilename });
 
         try {
-          // Obter/criar sessão para emitir eventos WS
+          // Obter/criar sessão para emitir eventos WS e salvar mensagens
           const session = await sessionService.findOrCreate({ telefone, canal: 'whatsapp', pushName });
-          emit(EVENTS.TRANSCREVENDO_AUDIO, { session_id: session.id, telefone });
-          emitToSession(session.id, EVENTS.TRANSCREVENDO_AUDIO, { telefone });
+          const sid = session.id;
+
+          // Salvar mensagem de entrada (áudio) no banco
+          await logger.saveMessage({ session_id: sid, direcao: 'entrada', conteudo: '🎤 [Áudio]', canal: 'whatsapp' });
+          // Emitir evento para o dashboard atualizar em tempo real
+          emit(EVENTS.NOVA_MENSAGEM, { session_id: sid, message: '🎤 [Áudio]', telefone, canal: 'whatsapp' });
+          emitToSession(sid, EVENTS.NOVA_MENSAGEM, { session_id: sid, message: '🎤 [Áudio]', direcao: 'entrada' });
+
+          emit(EVENTS.TRANSCREVENDO_AUDIO, { session_id: sid, telefone });
+          emitToSession(sid, EVENTS.TRANSCREVENDO_AUDIO, { telefone });
+
+          // Tentar transcrever: via URL ou via base64
+          let result = null;
 
           if (mediaUrl) {
-            const result = await transcribeAudio(mediaUrl, mediaMimetype, mediaFilename);
+            result = await transcribeAudio(mediaUrl, mediaMimetype, mediaFilename);
+          } else if (mediaBase64) {
+            console.log(`[webhook] Áudio sem URL, tentando via base64 (${mediaBase64.length} chars)`);
+            result = await transcribeAudioBase64(mediaBase64, mediaMimetype, mediaFilename);
+          } else {
+            console.log(`[webhook] Áudio sem mediaUrl e sem base64 de ${telefone}`);
+          }
 
+          if (result) {
             // Logar tentativa de transcrição
             await logger.saveAction({
-              session_id: session.id,
+              session_id: sid,
               interaction_id: null,
               acao: 'TRANSCRICAO_AUDIO',
               descricao: result.success
                 ? `Áudio transcrito: "${result.text?.substring(0, 100)}"`
                 : `Falha na transcrição: ${result.error}`,
               status: result.success ? 'sucesso' : 'erro',
-              dados_entrada: { mediaUrl: mediaUrl?.substring(0, 200), mediaMimetype },
+              dados_entrada: { mediaUrl: mediaUrl?.substring(0, 200), mediaMimetype, hasBase64: !!mediaBase64 },
               dados_saida: result.success ? { texto: result.text } : { error: result.error },
               tempo_ms: result.tempo_ms || 0,
             });
 
             if (result.success && result.text) {
-              // SUCESSO: alimentar texto transcrito no pipeline normal
+              // SUCESSO: alimentar texto transcrito no pipeline normal (processMessage vai salvar interação)
               console.log(`[webhook] Áudio transcrito, processando: "${result.text.substring(0, 80)}"`);
               bufferMessage(telefone, result.text, 'whatsapp', pushName, sendText);
               return res.json({ success: true });
             }
           }
 
-          // FALLBACK: não conseguiu transcrever
+          // FALLBACK: não conseguiu transcrever (sem URL ou Whisper falhou)
           console.log(`[webhook] Não foi possível transcrever áudio de ${telefone}`);
           const fallbackMsg = '🎤 Recebi seu áudio, mas não consegui entendê-lo no momento. Poderia digitar sua mensagem, por favor? 😊';
           await sendText(telefone, fallbackMsg);
+
+          // Salvar resposta do fallback no banco
+          await logger.saveMessage({ session_id: sid, direcao: 'saida', conteudo: fallbackMsg, canal: 'whatsapp' });
+          emit(EVENTS.RESPOSTA_ENVIADA, { session_id: sid, resposta: fallbackMsg });
+          emitToSession(sid, EVENTS.RESPOSTA_ENVIADA, { session_id: sid, resposta: fallbackMsg, direcao: 'saida' });
 
           // Se o áudio tinha caption, processar
           if (message && message.trim()) {
             bufferMessage(telefone, message, 'whatsapp', pushName, sendText);
           }
         } catch (audioErr) {
-          console.error('[webhook] Erro ao processar áudio:', audioErr.message);
+          console.error('[webhook] Erro ao processar áudio:', audioErr.message, audioErr.stack);
           // Fallback seguro
           await sendText(telefone, '🎤 Recebi seu áudio, mas tive um problema ao processá-lo. Poderia digitar sua mensagem, por favor? 😊').catch(() => {});
         }

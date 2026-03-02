@@ -1,8 +1,8 @@
 /**
  * audio.js — Serviço de transcrição de áudio via OpenAI Whisper.
  *
- * Baixa o arquivo de áudio de uma URL (Uazapi/WhatsApp) e envia para o
- * modelo whisper-1 da OpenAI para transcrição em português.
+ * Baixa o arquivo de áudio de uma URL (Uazapi/WhatsApp) ou recebe base64,
+ * e envia para o modelo whisper-1 da OpenAI para transcrição em português.
  */
 
 import OpenAI from 'openai';
@@ -31,20 +31,39 @@ const MIME_TO_EXT = {
 };
 
 function getExtension(mimetype, filename) {
-  // Tentar extrair da extensão do arquivo
   if (filename) {
     const ext = filename.split('.').pop()?.toLowerCase();
     if (ext && ['ogg', 'mp3', 'mp4', 'wav', 'webm', 'flac', 'm4a', 'oga', 'mpeg', 'mpga'].includes(ext)) {
       return ext;
     }
   }
-  // Extrair da MIME type (ignora parâmetros como "; codecs=opus")
   const baseMime = (mimetype || '').split(';')[0].trim().toLowerCase();
-  return MIME_TO_EXT[baseMime] || 'ogg'; // Default: ogg (áudio WhatsApp)
+  return MIME_TO_EXT[baseMime] || 'ogg';
 }
 
 /**
- * Baixa um arquivo de áudio e transcreve com OpenAI Whisper.
+ * Transcreve áudio com Whisper a partir de um Buffer.
+ */
+async function whisperTranscribe(audioBuffer, mimetype, filename) {
+  const ext = getExtension(mimetype, filename);
+  const finalFilename = filename || `audio.${ext}`;
+
+  const file = new File([audioBuffer], finalFilename, {
+    type: mimetype || 'audio/ogg',
+  });
+
+  console.log('[audio] Transcrevendo com Whisper...', { bytes: audioBuffer.length, filename: finalFilename });
+  const transcription = await openai.audio.transcriptions.create({
+    model: 'whisper-1',
+    file,
+    language: 'pt',
+  });
+
+  return transcription.text?.trim() || '';
+}
+
+/**
+ * Baixa um arquivo de áudio de uma URL e transcreve com OpenAI Whisper.
  *
  * @param {string} audioUrl     — URL do arquivo de áudio
  * @param {string} [mimetype]   — MIME type (ex: 'audio/ogg; codecs=opus')
@@ -59,14 +78,12 @@ export async function transcribeAudio(audioUrl, mimetype, filename) {
       return { success: false, error: 'URL do áudio não fornecida', tempo_ms: 0 };
     }
 
-    console.log('[audio] Baixando áudio:', { url: audioUrl?.substring(0, 100), mimetype });
+    console.log('[audio] Baixando áudio:', { url: audioUrl?.substring(0, 150), mimetype });
 
-    // 1. Baixar o arquivo de áudio
     const response = await axios.get(audioUrl, {
       responseType: 'arraybuffer',
       timeout: 30_000,
       headers: {
-        // Token Uazapi para URLs autenticadas
         ...(config.uazapi?.token ? { token: config.uazapi.token } : {}),
       },
     });
@@ -78,30 +95,12 @@ export async function transcribeAudio(audioUrl, mimetype, filename) {
       return { success: false, error: 'Áudio vazio (0 bytes)', tempo_ms: Date.now() - start };
     }
 
-    // Limite do Whisper: 25MB
     if (audioBuffer.length > 25 * 1024 * 1024) {
       return { success: false, error: 'Áudio excede 25MB (limite Whisper)', tempo_ms: Date.now() - start };
     }
 
-    // 2. Determinar extensão do arquivo
-    const ext = getExtension(mimetype, filename);
-    const finalFilename = filename || `audio.${ext}`;
-
-    // 3. Criar File para a API da OpenAI
-    const file = new File([audioBuffer], finalFilename, {
-      type: mimetype || 'audio/ogg',
-    });
-
-    // 4. Chamar Whisper API
-    console.log('[audio] Transcrevendo com Whisper...');
-    const transcription = await openai.audio.transcriptions.create({
-      model: 'whisper-1',
-      file,
-      language: 'pt', // Português (Brasil)
-    });
-
+    const text = await whisperTranscribe(audioBuffer, mimetype, filename);
     const elapsed = Date.now() - start;
-    const text = transcription.text?.trim();
 
     console.log('[audio] Transcrição concluída:', {
       chars: text?.length,
@@ -116,7 +115,58 @@ export async function transcribeAudio(audioUrl, mimetype, filename) {
     return { success: true, text, tempo_ms: elapsed };
   } catch (err) {
     const elapsed = Date.now() - start;
-    console.error('[audio] Erro na transcrição:', err.message);
+    console.error('[audio] Erro na transcrição (URL):', err.message);
+    return { success: false, error: err.message, tempo_ms: elapsed };
+  }
+}
+
+/**
+ * Transcreve áudio a partir de dados base64.
+ *
+ * @param {string} base64Data   — Áudio codificado em base64
+ * @param {string} [mimetype]   — MIME type
+ * @param {string} [filename]   — Nome do arquivo
+ * @returns {Promise<{ success: boolean, text?: string, tempo_ms?: number, error?: string }>}
+ */
+export async function transcribeAudioBase64(base64Data, mimetype, filename) {
+  const start = Date.now();
+
+  try {
+    if (!base64Data) {
+      return { success: false, error: 'Base64 do áudio não fornecido', tempo_ms: 0 };
+    }
+
+    // Remover prefixo data:audio/... se existir
+    const cleanBase64 = base64Data.replace(/^data:audio\/[^;]+;base64,/, '');
+    const audioBuffer = Buffer.from(cleanBase64, 'base64');
+
+    console.log('[audio] Áudio base64 recebido:', { bytes: audioBuffer.length, mimetype });
+
+    if (audioBuffer.length === 0) {
+      return { success: false, error: 'Áudio base64 vazio', tempo_ms: Date.now() - start };
+    }
+
+    if (audioBuffer.length > 25 * 1024 * 1024) {
+      return { success: false, error: 'Áudio excede 25MB (limite Whisper)', tempo_ms: Date.now() - start };
+    }
+
+    const text = await whisperTranscribe(audioBuffer, mimetype, filename);
+    const elapsed = Date.now() - start;
+
+    console.log('[audio] Transcrição base64 concluída:', {
+      chars: text?.length,
+      elapsed: `${elapsed}ms`,
+      preview: text?.substring(0, 100),
+    });
+
+    if (!text) {
+      return { success: false, error: 'Transcrição retornou vazia', tempo_ms: elapsed };
+    }
+
+    return { success: true, text, tempo_ms: elapsed };
+  } catch (err) {
+    const elapsed = Date.now() - start;
+    console.error('[audio] Erro na transcrição (base64):', err.message);
     return { success: false, error: err.message, tempo_ms: elapsed };
   }
 }

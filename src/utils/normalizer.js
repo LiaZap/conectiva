@@ -139,14 +139,22 @@ export function normalizeUazapiPayload(body) {
   let mediaUrl = null;
   let mediaFilename = null;
   let mediaMimetype = null;
+  let mediaBase64 = null;
 
   if (MEDIA_TYPES.has(messageType) || ['image', 'audio', 'video', 'document', 'sticker'].includes(messageType)) {
+    // Log para debug de payloads de mídia
+    if (messageType === 'audio') {
+      const debugKeys = Object.keys(data).filter(k => !['content'].includes(k));
+      const contentKeys = data.content && typeof data.content === 'object' ? Object.keys(data.content) : [];
+      console.log('[normalizer] Payload áudio — campos:', { dataKeys: debugKeys, contentKeys, hasUrl: !!data.url, hasMediaUrl: !!data.mediaUrl, hasBase64: !!data.base64 });
+    }
+
     // URL direta
-    mediaUrl = data.url || data.mediaUrl || data.fileUrl || null;
+    mediaUrl = data.url || data.mediaUrl || data.fileUrl || data.media || null;
 
     // URL dentro do content
     if (!mediaUrl && data.content && typeof data.content === 'object') {
-      mediaUrl = data.content.url || data.content.mediaUrl || data.content.fileUrl || null;
+      mediaUrl = data.content.url || data.content.mediaUrl || data.content.fileUrl || data.content.media || null;
       // Dentro de sub-objetos de mídia
       const mediaObj = data.content.imageMessage || data.content.audioMessage ||
         data.content.videoMessage || data.content.documentMessage ||
@@ -158,8 +166,20 @@ export function normalizeUazapiPayload(body) {
       }
     }
 
+    // Base64 como alternativa (Uazapi pode enviar direto)
+    if (!mediaUrl) {
+      mediaBase64 = data.base64 || data.mediaBase64 || data.file || null;
+      if (!mediaBase64 && data.content && typeof data.content === 'object') {
+        mediaBase64 = data.content.base64 || data.content.mediaBase64 || data.content.file || null;
+      }
+    }
+
     mediaFilename = mediaFilename || data.filename || data.fileName || null;
     mediaMimetype = mediaMimetype || data.mimetype || null;
+
+    if (messageType === 'audio' && !mediaUrl && !mediaBase64) {
+      console.log('[normalizer] AVISO: áudio sem URL e sem base64. Dump parcial:', JSON.stringify(data).substring(0, 500));
+    }
   }
 
   // Verificar se deve ser ignorado
@@ -179,6 +199,7 @@ export function normalizeUazapiPayload(body) {
     mediaUrl,
     mediaFilename,
     mediaMimetype,
+    mediaBase64,
   };
 }
 

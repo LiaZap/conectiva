@@ -6,7 +6,7 @@ import * as logger from '../services/logger.js';
 import { query } from '../config/database.js';
 
 import { execute as n8nExecute } from '../services/n8n.js';
-import { sendText, sendDocument, downloadMedia } from '../services/whatsapp.js';
+import { sendText, sendDocument, downloadMedia, sendPresence } from '../services/whatsapp.js';
 import { analisarNegociacao } from '../services/negotiation.js';
 import { classify, formatResponse, generateDiagnostic, generateSummary } from '../services/ai.js';
 import { transcribeAudio, transcribeAudioBase64, transcribeAudioBuffer } from '../services/audio.js';
@@ -164,6 +164,11 @@ async function processMessage(canal, body, replyFn) {
   if (session.status === 'aguardando_humano') {
     console.log(`[webhook] Sessão ${sid} em atendimento humano — bot desativado`);
     return;
+  }
+
+  // 4.6. Mostrar "digitando..." enquanto processa (WhatsApp)
+  if (canal === 'whatsapp') {
+    sendPresence(telefone, 'composing').catch(() => {});
   }
 
   // 5. Buscar histórico + classificar com IA

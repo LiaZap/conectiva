@@ -12,16 +12,52 @@ const client = axios.create({
 });
 
 /**
+ * Envia status de presença (digitando...) via Uazapi.
+ * POST /chat/presence  { number, state }
+ * state: 'composing' (digitando) ou 'available' (disponível/parou de digitar)
+ * Usado para mostrar "digitando..." enquanto a IA processa (antes de ter resposta).
+ */
+export async function sendPresence(telefone, state = 'composing') {
+  try {
+    await client.post('/chat/presence', {
+      number: telefone,
+      state,
+    });
+    return { success: true };
+  } catch (err) {
+    // Não logar erro — presença é best-effort, não deve bloquear fluxo
+    return { success: false };
+  }
+}
+
+/**
+ * Calcula delay de digitação baseado no tamanho da mensagem.
+ * Simula velocidade de digitação humana (~40 chars/s) com mínimo 2s e máximo 5s.
+ * A Uazapi mostra "Digitando..." durante este delay automaticamente.
+ */
+function typingDelay(texto) {
+  const chars = texto?.length || 0;
+  const ms = Math.min(Math.max(Math.round(chars / 40 * 1000), 2000), 5000);
+  return ms;
+}
+
+/**
  * Envia mensagem de texto via Uazapi.
- * POST /send/text  { number, text }
+ * Usa o parâmetro nativo `delay` da Uazapi que mostra "Digitando..." automaticamente.
+ * Também marca conversa e mensagens como lidas (readchat + readmessages).
+ * POST /send/text  { number, text, delay, readchat, readmessages }
  */
 export async function sendText(telefone, texto) {
   try {
+    const delay = typingDelay(texto);
     const { data } = await client.post('/send/text', {
       number: telefone,
       text: texto,
+      delay,
+      readchat: true,
+      readmessages: true,
     });
-    console.log('[whatsapp] sendText ok', { telefone });
+    console.log('[whatsapp] sendText ok', { telefone, delay });
     return { success: true, data };
   } catch (err) {
     console.error('[whatsapp] sendText erro', { telefone, error: err.message });
@@ -31,7 +67,8 @@ export async function sendText(telefone, texto) {
 
 /**
  * Envia documento/mídia via Uazapi.
- * POST /send/media  { number, media, type, caption, fileName }
+ * Mostra "Digitando..." por 2s antes de enviar o documento.
+ * POST /send/media  { number, media, type, caption, fileName, delay, readchat, readmessages }
  */
 export async function sendDocument(telefone, url, filename, caption) {
   try {
@@ -41,6 +78,9 @@ export async function sendDocument(telefone, url, filename, caption) {
       type: 'document',
       caption: caption || '',
       fileName: filename || 'documento.pdf',
+      delay: 2000,
+      readchat: true,
+      readmessages: true,
     });
     console.log('[whatsapp] sendDocument ok', { telefone, filename });
     return { success: true, data };
@@ -130,7 +170,8 @@ export async function downloadMedia({ messageId }) {
 
 /**
  * Envia menu interativo (botões) via Uazapi.
- * POST /send/menu  { number, title, text, footer, options }
+ * Mostra "Digitando..." por 2s antes de enviar o menu.
+ * POST /send/menu  { number, title, text, footer, options, delay, readchat, readmessages }
  */
 export async function sendButtons(telefone, texto, buttons) {
   try {
@@ -146,6 +187,9 @@ export async function sendButtons(telefone, texto, buttons) {
       text: texto,
       footer: 'Selecione uma opção',
       options,
+      delay: 2000,
+      readchat: true,
+      readmessages: true,
     });
     console.log('[whatsapp] sendButtons ok', { telefone, total: options.length });
     return { success: true, data };

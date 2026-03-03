@@ -195,13 +195,15 @@ async function processMessage(canal, body, replyFn) {
   // Ações que PRECISAM de CPF ou cd_cliente para funcionar
   const ACTIONS_REQUIRING_CUSTOMER = new Set([
     'FATURAS_PENDENTES', 'SEGUNDA_VIA', 'CONEXOES_CLIENTE', 'CONTRATOS_CLIENTE',
-    'CRIAR_OS', 'AUTO_DESBLOQUEIO', 'NOVO_CONTRATO',
+    'CRIAR_OS', 'AUTO_DESBLOQUEIO',
     'FATURAS_AVANCADO', 'ATUALIZAR_CADASTRO', 'CONSULTAR_CADASTRO',
   ]);
-  // NOTA: NOVA_LEAD, CRIAR_PESSOA e LISTAR_PLANOS NÃO precisam de cd_cliente
+  // NOTA: NOVA_LEAD, CRIAR_PESSOA, LISTAR_PLANOS e NOVO_CONTRATO NÃO precisam de cd_cliente aqui
+  // NOVO_CONTRATO resolve cd_cliente automaticamente (cria pessoa se necessário)
 
   // Se precisa CPF (IA pediu OU ação MK requer) e não tem, pedir ao cliente
-  const precisaIdentificacao = precisaCPF || (acaoMK && ACTIONS_REQUIRING_CUSTOMER.has(acaoMK));
+  // NOVO_CONTRATO também precisa de CPF (para criar pessoa), mas resolve cd_cliente sozinho
+  const precisaIdentificacao = precisaCPF || (acaoMK && (ACTIONS_REQUIRING_CUSTOMER.has(acaoMK) || acaoMK === 'NOVO_CONTRATO'));
   if (precisaIdentificacao && !session.cpf_cnpj && !session.cd_cliente_mk) {
     const pedidoCPF = respostaSugerida || 'Para que eu possa consultar suas informações e ajudá-lo melhor, preciso do seu CPF ou CNPJ. Pode informar, por favor?';
     await replyFn(telefone, pedidoCPF);
@@ -408,6 +410,52 @@ async function processMessage(canal, body, replyFn) {
       }
     }
 
+    // NOVO_CONTRATO — se não tem cd_cliente mas tem CPF, criar pessoa automaticamente primeiro
+    if (acaoMK === 'NOVO_CONTRATO' && !session.cd_cliente_mk && session.cpf_cnpj) {
+      console.log(`[webhook] NOVO_CONTRATO sem cd_cliente — tentando CRIAR_PESSOA automaticamente...`);
+      try {
+        let foneReal = telefone.replace(/\D/g, '');
+        if (foneReal.startsWith('55') && foneReal.length >= 12) foneReal = foneReal.substring(2);
+
+        const criarParams = {
+          doc: session.cpf_cnpj,
+          nome: mkParams.nome || session.nome_cliente || pushName || '',
+          fone: foneReal,
+          email: mkParams.email || '',
+          cep: mkParams.cep || '',
+        };
+
+        const criarResult = await n8nExecute({ action: 'CRIAR_PESSOA', params: criarParams, session_id: sid });
+
+        if (criarResult.success && criarResult.data) {
+          const cdCliente = criarResult.data.CodigoCliente || criarResult.data.cd_cliente || criarResult.data.Codigo;
+          if (cdCliente) {
+            await sessionService.update(sid, { cd_cliente_mk: String(cdCliente) });
+            session.cd_cliente_mk = String(cdCliente);
+            mkParams.cd_cliente = String(cdCliente);
+            console.log(`[webhook] Pessoa criada automaticamente: cd_cliente=${cdCliente}`);
+
+            await logger.saveAction({
+              session_id: sid, interaction_id: null,
+              acao: 'CRIAR_PESSOA', descricao: 'Cadastro automático antes do contrato',
+              status: 'sucesso', dados_entrada: criarParams,
+              dados_saida: criarResult.data, tempo_ms: criarResult.tempo_ms,
+            });
+          }
+        } else {
+          console.error('[webhook] Falha ao criar pessoa automaticamente:', criarResult.data);
+          await logger.saveAction({
+            session_id: sid, interaction_id: null,
+            acao: 'CRIAR_PESSOA', descricao: 'Cadastro automático falhou',
+            status: 'erro', dados_entrada: criarParams,
+            dados_saida: criarResult.data, tempo_ms: criarResult.tempo_ms,
+          });
+        }
+      } catch (err) {
+        console.error('[webhook] Erro ao criar pessoa antes do contrato:', err.message);
+      }
+    }
+
     // NOVO_CONTRATO — preencher parâmetros obrigatórios com defaults
     if (acaoMK === 'NOVO_CONTRATO' && mkParams.codplano) {
       console.log(`[webhook] NOVO_CONTRATO: criando contrato com plano ${mkParams.codplano}...`);
@@ -420,7 +468,7 @@ async function processMessage(canal, body, replyFn) {
       const diaVcto = mkParams.dia_vencimento || '10';
       const codigoRegraVcto = REGRAS_VENCIMENTO[diaVcto] || 1; // default dia 10
 
-      mkParams.CodigoCliente = mkParams.cd_cliente;
+      mkParams.CodigoCliente = mkParams.cd_cliente || session.cd_cliente_mk;
       mkParams.CodigoTipoPlano = '1'; // Internet
       mkParams.CodigoPlanoAcesso = String(mkParams.codplano);
       mkParams.CodigoRegraVencimento = String(codigoRegraVcto);

@@ -11,7 +11,7 @@ import { analisarNegociacao } from '../services/negotiation.js';
 import { classify, formatResponse, generateDiagnostic, generateSummary } from '../services/ai.js';
 import { transcribeAudio, transcribeAudioBase64, transcribeAudioBuffer } from '../services/audio.js';
 import { analyzeImage, analyzeDocument } from '../services/vision.js';
-import { notifyEscalation, notifyNewLead } from '../services/notification.js';
+import { notifyEscalation, notifyNewLead, notifyNewSale } from '../services/notification.js';
 import { emit, emitToSession, EVENTS } from '../websocket/events.js';
 
 const router = Router();
@@ -264,7 +264,7 @@ async function processMessage(canal, body, replyFn) {
             tempo_ms: consultaResult.tempo_ms,
           });
         } else {
-          // ❌ Cliente NÃO encontrado no MK — criar lead e informar
+          // ❌ Cliente NÃO encontrado no MK
           console.log(`[webhook] Cliente NÃO encontrado no MK: CPF ${session.cpf_cnpj}`);
 
           await logger.saveAction({
@@ -274,83 +274,76 @@ async function processMessage(canal, body, replyFn) {
             dados_saida: consultaResult.data, tempo_ms: consultaResult.tempo_ms,
           });
 
-          // Criar lead automaticamente para a equipe entrar em contato
-          try {
-            const leadResult = await n8nExecute({
-              action: 'NOVA_LEAD',
-              params: {
-                nome: session.nome_cliente || pushName || '',
-                telefone: telefone,
-                observacao: `Novo contato não cadastrado. CPF/CNPJ: ${session.cpf_cnpj}. Canal: ${canal}. Intenção: ${intencao}. Mensagem: ${message}`,
-              },
-              session_id: sid,
-            });
+          // Verificar se a intenção é de venda/contratação
+          const isFluxoVenda = ['CONTRATO', 'VIABILIDADE'].includes(intencao) || acaoMK === 'NOVO_CONTRATO';
 
-            await logger.saveAction({
-              session_id: sid, interaction_id: null,
-              acao: 'NOVA_LEAD', descricao: 'Cliente não cadastrado — lead criada automaticamente',
-              status: leadResult.success ? 'sucesso' : 'erro',
-              dados_entrada: { cpf: session.cpf_cnpj, telefone },
-              dados_saida: leadResult.data, tempo_ms: leadResult.tempo_ms,
-            });
-            console.log('[webhook] Lead criada para cliente não cadastrado:', { success: leadResult.success });
-          } catch (leadErr) {
-            console.error('[webhook] Erro ao criar lead:', leadErr.message);
-          }
+          if (isFluxoVenda) {
+            // ── FLUXO DE VENDA: NÃO criar lead agora — IA vai tentar vender primeiro ──
+            console.log(`[webhook] Cliente não cadastrado com intenção de venda (${intencao}) — IA vai conduzir a venda`);
 
-          // Notificar grupo de atendentes sobre novo lead (best-effort)
-          notifyNewLead({ session, intencao, mensagem: message }).catch(() => {});
+            // Marcar para a IA saber que o cliente não é cadastrado e guiar a venda
+            mkResult = {
+              success: true,
+              data: { _clienteNaoEncontrado: true, _fluxoVenda: true },
+              tempo_ms: consultaResult.tempo_ms,
+              endpoint: consultaResult.endpoint,
+            };
+            // NÃO retorna — continua para a formatação de resposta pela IA
+          } else {
+            // ── FLUXO PADRÃO (não é venda): criar lead e informar ──
 
-          // Se intenção indica interesse em contratar, buscar planos disponíveis
-          let planosTexto = '';
-          const interesseContratacao = ['CONTRATO', 'VIABILIDADE', 'CADASTRO'].includes(intencao);
-          if (interesseContratacao) {
+            // Criar lead automaticamente para a equipe entrar em contato
             try {
-              const planosResult = await n8nExecute({
-                action: 'LISTAR_PLANOS', params: { TipoPlano: '1' }, session_id: sid,
+              const leadResult = await n8nExecute({
+                action: 'NOVA_LEAD',
+                params: {
+                  nome: session.nome_cliente || pushName || '',
+                  telefone: telefone,
+                  observacao: `Novo contato não cadastrado. CPF/CNPJ: ${session.cpf_cnpj}. Canal: ${canal}. Intenção: ${intencao}. Mensagem: ${message}`,
+                },
+                session_id: sid,
               });
-              if (planosResult.success && planosResult.data?.Planos?.length > 0) {
-                const planos = planosResult.data.Planos.slice(0, 8); // Máx 8 planos
-                planosTexto = '\n\n📶 *Nossos planos de internet:*\n' +
-                  planos.map(p => `• *${p.descricao}*`).join('\n') +
-                  '\n\nQuer saber mais sobre algum plano? 😊';
-                await logger.saveAction({
-                  session_id: sid, interaction_id: null,
-                  acao: 'LISTAR_PLANOS', descricao: 'Planos listados para cliente não cadastrado interessado',
-                  status: 'sucesso', dados_entrada: { TipoPlano: 1 },
-                  dados_saida: { total: planos.length }, tempo_ms: planosResult.tempo_ms,
-                });
-              }
-            } catch (e) {
-              console.error('[webhook] Erro ao listar planos (não crítico):', e.message);
+
+              await logger.saveAction({
+                session_id: sid, interaction_id: null,
+                acao: 'NOVA_LEAD', descricao: 'Cliente não cadastrado — lead criada automaticamente',
+                status: leadResult.success ? 'sucesso' : 'erro',
+                dados_entrada: { cpf: session.cpf_cnpj, telefone },
+                dados_saida: leadResult.data, tempo_ms: leadResult.tempo_ms,
+              });
+              console.log('[webhook] Lead criada para cliente não cadastrado:', { success: leadResult.success });
+            } catch (leadErr) {
+              console.error('[webhook] Erro ao criar lead:', leadErr.message);
             }
+
+            // Notificar grupo de atendentes sobre novo lead (best-effort)
+            notifyNewLead({ session, intencao, mensagem: message }).catch(() => {});
+
+            // Informar o cliente e encerrar este ciclo
+            const respostaNaoCadastrado =
+              `Não encontrei um cadastro no nosso sistema com o CPF informado 🤔\n\n` +
+              `Mas não se preocupe! Já registrei seu contato e *nossa equipe vai entrar em contato* com você para te ajudar! 😊` +
+              `\n\nSe preferir atendimento presencial:\n` +
+              `📍 *Matozinhos*: R. José Dias Corrêa, 87A — Centro\n` +
+              `📍 *Lagoa Santa*: R. Aleomar Baleeiro, 462 — Centro\n` +
+              `📍 *Prudente de Morais*: R. José de Souza, 83A — Centro\n\n` +
+              `Ou ligue: ☎️ *(31) 3712-1294* ou *(31) 3268-4691*`;
+
+            await replyFn(telefone, respostaNaoCadastrado);
+            await logger.saveMessage({ session_id: sid, direcao: 'saida', conteudo: respostaNaoCadastrado, canal });
+            await logger.saveInteraction({
+              session_id: sid, intencao, confianca, mensagem_cliente: message,
+              resposta_ia: respostaNaoCadastrado, acao_mk: 'CONSULTAR_CLIENTE',
+              mk_endpoint: consultaResult.endpoint, mk_sucesso: true,
+              mk_resposta: consultaResult.data,
+              status: 'cliente_nao_encontrado', tempo_ia_ms,
+              tempo_mk_ms: consultaResult.tempo_ms,
+              tempo_total_ms: Date.now() - totalStart,
+            });
+            emit(EVENTS.RESPOSTA_ENVIADA, { session_id: sid, intencao, resposta: respostaNaoCadastrado });
+            emitToSession(sid, EVENTS.RESPOSTA_ENVIADA, { resposta: respostaNaoCadastrado, direcao: 'saida' });
+            return;
           }
-
-          // Informar o cliente e encerrar este ciclo
-          const respostaNaoCadastrado =
-            `Não encontrei um cadastro no nosso sistema com o CPF informado 🤔\n\n` +
-            `Mas não se preocupe! Já registrei seu contato e *nossa equipe vai entrar em contato* com você para te ajudar! 😊` +
-            planosTexto +
-            `\n\nSe preferir atendimento presencial:\n` +
-            `📍 *Matozinhos*: R. José Dias Corrêa, 87A — Centro\n` +
-            `📍 *Lagoa Santa*: R. Aleomar Baleeiro, 462 — Centro\n` +
-            `📍 *Prudente de Morais*: R. José de Souza, 83A — Centro\n\n` +
-            `Ou ligue: ☎️ *(31) 3712-1294* ou *(31) 3268-4691*`;
-
-          await replyFn(telefone, respostaNaoCadastrado);
-          await logger.saveMessage({ session_id: sid, direcao: 'saida', conteudo: respostaNaoCadastrado, canal });
-          await logger.saveInteraction({
-            session_id: sid, intencao, confianca, mensagem_cliente: message,
-            resposta_ia: respostaNaoCadastrado, acao_mk: 'CONSULTAR_CLIENTE',
-            mk_endpoint: consultaResult.endpoint, mk_sucesso: true,
-            mk_resposta: consultaResult.data,
-            status: 'cliente_nao_encontrado', tempo_ia_ms,
-            tempo_mk_ms: consultaResult.tempo_ms,
-            tempo_total_ms: Date.now() - totalStart,
-          });
-          emit(EVENTS.RESPOSTA_ENVIADA, { session_id: sid, intencao, resposta: respostaNaoCadastrado });
-          emitToSession(sid, EVENTS.RESPOSTA_ENVIADA, { resposta: respostaNaoCadastrado, direcao: 'saida' });
-          return;
         }
       } else {
         // Erro na consulta MK — deixar seguir, vai falhar na ação principal e escalonar
@@ -483,37 +476,46 @@ async function processMessage(canal, body, replyFn) {
       }
     }
 
-    // Se CONSULTAR_CLIENTE não encontrou o cliente, criar lead e informar
+    // Se CONSULTAR_CLIENTE não encontrou o cliente
     if (acaoMK === 'CONSULTAR_CLIENTE' && mkResult?.success && mkResult.data && !session.cd_cliente_mk) {
       console.log(`[webhook] CONSULTAR_CLIENTE: cliente não encontrado para CPF ${session.cpf_cnpj}`);
 
-      // Criar lead automaticamente
-      try {
-        const leadResult = await n8nExecute({
-          action: 'NOVA_LEAD',
-          params: {
-            nome: session.nome_cliente || pushName || '',
-            telefone: telefone,
-            observacao: `Novo contato não cadastrado. CPF/CNPJ: ${session.cpf_cnpj}. Canal: ${canal}. Intenção: ${intencao}`,
-          },
-          session_id: sid,
-        });
-        await logger.saveAction({
-          session_id: sid, interaction_id: null,
-          acao: 'NOVA_LEAD', descricao: 'Cliente não cadastrado — lead criada (via CONSULTAR_CLIENTE direto)',
-          status: leadResult.success ? 'sucesso' : 'erro',
-          dados_entrada: { cpf: session.cpf_cnpj, telefone },
-          dados_saida: leadResult.data, tempo_ms: leadResult.tempo_ms,
-        });
-      } catch (leadErr) {
-        console.error('[webhook] Erro ao criar lead:', leadErr.message);
+      const isFluxoVendaConsulta = ['CONTRATO', 'VIABILIDADE'].includes(intencao);
+
+      if (isFluxoVendaConsulta) {
+        // ── FLUXO DE VENDA: NÃO criar lead — IA vai tentar vender primeiro ──
+        console.log(`[webhook] Cliente não cadastrado (CONSULTAR_CLIENTE) com intenção de venda — IA vai conduzir`);
+        mkResult._clienteNaoEncontrado = true;
+        mkResult.data._fluxoVenda = true;
+      } else {
+        // ── FLUXO PADRÃO: criar lead e informar ──
+        try {
+          const leadResult = await n8nExecute({
+            action: 'NOVA_LEAD',
+            params: {
+              nome: session.nome_cliente || pushName || '',
+              telefone: telefone,
+              observacao: `Novo contato não cadastrado. CPF/CNPJ: ${session.cpf_cnpj}. Canal: ${canal}. Intenção: ${intencao}`,
+            },
+            session_id: sid,
+          });
+          await logger.saveAction({
+            session_id: sid, interaction_id: null,
+            acao: 'NOVA_LEAD', descricao: 'Cliente não cadastrado — lead criada (via CONSULTAR_CLIENTE direto)',
+            status: leadResult.success ? 'sucesso' : 'erro',
+            dados_entrada: { cpf: session.cpf_cnpj, telefone },
+            dados_saida: leadResult.data, tempo_ms: leadResult.tempo_ms,
+          });
+        } catch (leadErr) {
+          console.error('[webhook] Erro ao criar lead:', leadErr.message);
+        }
+
+        // Notificar grupo de atendentes (best-effort)
+        notifyNewLead({ session, intencao, mensagem: message }).catch(() => {});
+
+        // Override: substituir resposta padrão por mensagem de cliente não encontrado
+        mkResult._clienteNaoEncontrado = true;
       }
-
-      // Notificar grupo de atendentes (best-effort)
-      notifyNewLead({ session, intencao, mensagem: message }).catch(() => {});
-
-      // Override: substituir resposta padrão por mensagem de cliente não encontrado
-      mkResult._clienteNaoEncontrado = true;
     }
   }
 
@@ -676,6 +678,11 @@ async function processMessage(canal, body, replyFn) {
         status: 'contrato_criado', tempo_ia_ms, tempo_mk_ms: mkResult.tempo_ms,
         tempo_total_ms: Date.now() - totalStart, contrato_criado: true,
       });
+
+      // Notificar grupo de atendentes sobre a nova venda (best-effort)
+      const PLANOS_MAP = { '2153': '400 MB', '1326': '600 MB', '1320': '800 MB', '1327': '1 GB' };
+      const planoNome = PLANOS_MAP[String(paramsMK?.codplano)] || `Plano ${paramsMK?.codplano}`;
+      notifyNewSale({ session, contrato: contratoCriado, plano: planoNome }).catch(() => {});
     } catch (err) {
       console.error('[webhook] Erro ao logar contrato criado:', err.message);
     }
@@ -730,25 +737,20 @@ async function processMessage(canal, body, replyFn) {
 
   // 9. Formatar resposta final
   let resposta;
-  if (mkResult?._clienteNaoEncontrado) {
-    // Cliente não encontrado no MK — lead já foi criada acima
-    // Listar planos se o cliente parece interessado em contratar
-    let planosExtra = '';
-    if (['CONTRATO', 'VIABILIDADE', 'CADASTRO'].includes(intencao)) {
-      try {
-        const planosRes = await n8nExecute({ action: 'LISTAR_PLANOS', params: { TipoPlano: '1' }, session_id: sid });
-        if (planosRes.success && planosRes.data?.Planos?.length > 0) {
-          const planos = planosRes.data.Planos.slice(0, 8);
-          planosExtra = '\n\n📶 *Nossos planos de internet:*\n' +
-            planos.map(p => `• *${p.descricao}*`).join('\n') +
-            '\n\nQuer saber mais sobre algum plano? 😊';
-        }
-      } catch (_) { /* não crítico */ }
-    }
+  if (mkResult?.data?._fluxoVenda && mkResult?._clienteNaoEncontrado) {
+    // ── FLUXO DE VENDA: cliente não cadastrado — IA vai conduzir a venda ──
+    // Usar formatResponse para a IA gerar resposta natural guiando o cadastro/venda
+    resposta = await formatResponse({
+      intencao,
+      mkData: { _clienteNaoEncontrado: true, _fluxoVenda: true },
+      session,
+      historico,
+    });
+  } else if (mkResult?._clienteNaoEncontrado) {
+    // Cliente não encontrado no MK (intenção NÃO é venda) — lead já foi criada acima
     resposta =
       `Não encontrei um cadastro no nosso sistema com o CPF informado 🤔\n\n` +
       `Mas não se preocupe! Já registrei seu contato e *nossa equipe vai entrar em contato* com você para te ajudar! 😊` +
-      planosExtra +
       `\n\nSe preferir atendimento presencial:\n` +
       `📍 *Matozinhos*: R. José Dias Corrêa, 87A — Centro\n` +
       `📍 *Lagoa Santa*: R. Aleomar Baleeiro, 462 — Centro\n` +

@@ -127,6 +127,64 @@ export async function notifyNewLead({ session, intencao, mensagem }) {
   }
 }
 
+/**
+ * Monta a mensagem de nova venda (contrato criado pela IA).
+ */
+function buildNewSaleMessage({ session, contrato, plano }) {
+  const nome = session?.nome_cliente || 'Não identificado';
+  const telefone = session?.telefone || '—';
+  const cpf = session?.cpf_cnpj || '—';
+  const canal = (session?.canal || 'whatsapp').toUpperCase();
+  const dataHora = formatNow();
+  const codContrato = contrato?.CodigoContrato || contrato?.codigo_contrato || contrato?.Codigo || '—';
+  const dashUrl = config.dashboardUrl
+    ? `\n📋 *Painel:* ${config.dashboardUrl}/session/${session?.id}`
+    : '';
+
+  return `🎉 *NOVA VENDA — CONTRATO CRIADO PELA IA* 🎉
+
+👤 *Cliente:* ${nome}
+📱 *Telefone:* ${telefone}
+🪪 *CPF/CNPJ:* ${cpf}
+📲 *Canal:* ${canal}
+📶 *Plano:* ${plano || '—'}
+📄 *Contrato:* ${codContrato}
+
+✅ A IA conduziu a venda e criou o contrato automaticamente!
+📅 *Próximo passo:* Agendar instalação com o cliente.
+
+🕐 ${dataHora}${dashUrl}`;
+}
+
+/**
+ * Notifica atendentes sobre nova venda (contrato criado pela IA) via grupo WhatsApp.
+ * Best-effort: erro não bloqueia o fluxo principal.
+ */
+export async function notifyNewSale({ session, contrato, plano }) {
+  try {
+    const groupId = config.notifyGroupId;
+
+    if (!groupId) {
+      console.log('[notification] NOTIFY_GROUP_ID não configurado — pulando notificação de venda');
+      return { success: false, error: 'groupId não configurado' };
+    }
+
+    const message = buildNewSaleMessage({ session, contrato, plano });
+    const result = await sendGroupText(groupId, message);
+
+    if (result.success) {
+      console.log('[notification] Nova venda notificada no grupo WhatsApp');
+    } else {
+      console.error('[notification] Falha ao notificar nova venda:', result.error);
+    }
+
+    return result;
+  } catch (err) {
+    console.error('[notification] Erro ao notificar nova venda:', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
 export async function notifyEscalation({ session, escalation, motivo }) {
   try {
     const groupId = config.notifyGroupId;

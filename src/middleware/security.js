@@ -1,5 +1,5 @@
 /**
- * security.js — Middleware de segurança do Conectiva Bot
+ * security.js — Middleware de segurança da Conectiva IA
  *
  * Inclui: helmet, rate limiting, sanitização de inputs, JWT auth para dashboard.
  */

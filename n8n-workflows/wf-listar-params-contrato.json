@@ -1,0 +1,84 @@
+{
+  "name": "MK - Listar Parâmetros para Contrato",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mk-listar-params-contrato",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "mk-listar-params-contrato"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "key": "mk:auth:token"
+      },
+      "id": "redis-get",
+      "name": "Redis GET Token",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [480, 300],
+      "credentials": {
+        "redis": {
+          "id": "redis-cred",
+          "name": "Redis Local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const token = $input.first().json.token || $input.first().json;\nconst base = 'https://mk.conectivainfor.com.br/mk';\n\nasync function fetchMK(endpoint, extra = '') {\n  try {\n    const url = `${base}/${endpoint}.rule?sys=MK0&token=${token}${extra}`;\n    const resp = await fetch(url);\n    return await resp.json();\n  } catch(e) {\n    return { error: e.message };\n  }\n}\n\n// Buscar todos os parâmetros em paralelo\nconst [planos, regrasVcto, sla, regraBloq, profilePgto, planoContas, descontos, tiposOS] = await Promise.all([\n  fetchMK('WSMKListaPlanoAcesso', '&TipoPlano=1'),\n  fetchMK('WSMKListaRegraVencimento'),\n  fetchMK('WSMKListaTabelaSLA'),\n  fetchMK('WSMKListaRegraBloqueio'),\n  fetchMK('WSMKListaProfilePagamento', '&CodigoFormaPagamento=3'),\n  fetchMK('WSMKPlanoContas'),\n  fetchMK('WSMKListaDesconto'),\n  fetchMK('WSMKOSListaTiposOS'),\n]);\n\nreturn [{\n  json: {\n    planos: (planos.Planos || []).filter(p => p.inativo === 'N'),\n    regrasVencimento: regrasVcto.RegrasVencimento || [],\n    tabelasSLA: sla.TabelaSLA || [],\n    regrasBloqueio: regraBloq.RegraBloqueio || [],\n    profilesPagamento: profilePgto.ProfilesPagamento || [],\n    planoContas: planoContas.PlanoContas || [],\n    descontos: descontos.RegrasDesconto || [],\n    tiposOS: tiposOS.Tipos || [],\n  }\n}];"
+      },
+      "id": "fetch-all",
+      "name": "Buscar Todos Parâmetros MK",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const dados = $input.first().json;\nconst body = $('Webhook Trigger').first().json.body || {};\n\nreturn [{\n  json: {\n    success: true,\n    data: dados,\n    endpoint: 'WSMKListaParamsContrato',\n    session_id: body.session_id || null\n  }\n}];"
+      },
+      "id": "format-response",
+      "name": "Formatar Resposta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 300]
+    },
+    {
+      "parameters": {
+        "options": {},
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1140, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "Redis GET Token", "type": "main", "index": 0 }]]
+    },
+    "Redis GET Token": {
+      "main": [[{ "node": "Buscar Todos Parâmetros MK", "type": "main", "index": 0 }]]
+    },
+    "Buscar Todos Parâmetros MK": {
+      "main": [[{ "node": "Formatar Resposta", "type": "main", "index": 0 }]]
+    },
+    "Formatar Resposta": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "MK Solutions" }, { "name": "Cadastro" }]
+}

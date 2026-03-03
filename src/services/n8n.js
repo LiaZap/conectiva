@@ -15,6 +15,10 @@ export const ACTIONS = {
   ATUALIZAR_CADASTRO:   '/webhook/mk-atualizar-cadastro',
   CONSULTAR_CADASTRO:   '/webhook/mk-consulta-doc',
   CONSULTAR_COBERTURA:  '/webhook/mk-viabilidade-cobertura',
+  LISTAR_PLANOS:        '/webhook/mk-listar-planos',
+  CRIAR_PESSOA:         '/webhook/mk-criar-pessoa',
+  GERAR_PIX:            '/webhook/mk-pix',
+  LISTAR_PARAMS_CONTRATO: '/webhook/mk-listar-params-contrato',
 };
 
 const client = axios.create({

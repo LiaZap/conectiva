@@ -1,0 +1,100 @@
+{
+  "name": "MK - Listar Planos de Acesso",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mk-listar-planos",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "mk-listar-planos"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "key": "mk:auth:token"
+      },
+      "id": "redis-get",
+      "name": "Redis GET Token",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [480, 300],
+      "credentials": {
+        "redis": {
+          "id": "redis-cred",
+          "name": "Redis Local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://mk.conectivainfor.com.br/mk/WSMKListaPlanoAcesso.rule",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "sys", "value": "MK0" },
+            { "name": "token", "value": "={{ $node['Redis GET Token'].json.token || $node['Redis GET Token'].json }}" },
+            { "name": "TipoPlano", "value": "={{ $node['Webhook Trigger'].json.body.TipoPlano || '1' }}" }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "http-mk",
+      "name": "HTTP - ListaPlanoAcesso",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const mkResponse = $input.first().json;\nconst body = $('Webhook Trigger').first().json.body || {};\n\n// Filtrar apenas planos ativos\nconst planos = (mkResponse.Planos || []).filter(p => p.inativo === 'N');\n\nreturn [{\n  json: {\n    success: true,\n    data: { Planos: planos, total: planos.length },\n    endpoint: 'WSMKListaPlanoAcesso',\n    session_id: body.session_id || null\n  }\n}];"
+      },
+      "id": "format-response",
+      "name": "Formatar Resposta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 300]
+    },
+    {
+      "parameters": {
+        "options": {},
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1140, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "Redis GET Token", "type": "main", "index": 0 }]]
+    },
+    "Redis GET Token": {
+      "main": [[{ "node": "HTTP - ListaPlanoAcesso", "type": "main", "index": 0 }]]
+    },
+    "HTTP - ListaPlanoAcesso": {
+      "main": [[{ "node": "Formatar Resposta", "type": "main", "index": 0 }]]
+    },
+    "Formatar Resposta": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "MK Solutions" }, { "name": "Cadastro" }]
+}

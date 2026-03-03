@@ -1,5 +1,5 @@
 -- ============================================================
--- Conectiva Bot - Schema PostgreSQL
+-- Conectiva IA - Schema PostgreSQL
 -- ============================================================
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";

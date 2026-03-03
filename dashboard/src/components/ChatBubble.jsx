@@ -1,6 +1,6 @@
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Bot, User, Mic, Image, FileText, Eye, Download } from 'lucide-react';
+import { Sparkles, User, Mic, Image, FileText, Eye, Download } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
@@ -169,7 +169,7 @@ export default function ChatBubble(props) {
 
       {!isClient && (
         <div className="w-7 h-7 rounded-full bg-conectiva-700 flex items-center justify-center shrink-0 mt-1">
-          <Bot size={14} />
+          <Sparkles size={14} />
         </div>
       )}
     </div>

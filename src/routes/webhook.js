@@ -300,11 +300,37 @@ async function processMessage(canal, body, replyFn) {
           // Notificar grupo de atendentes sobre novo lead (best-effort)
           notifyNewLead({ session, intencao, mensagem: message }).catch(() => {});
 
+          // Se intenção indica interesse em contratar, buscar planos disponíveis
+          let planosTexto = '';
+          const interesseContratacao = ['CONTRATO', 'VIABILIDADE', 'CADASTRO'].includes(intencao);
+          if (interesseContratacao) {
+            try {
+              const planosResult = await n8nExecute({
+                action: 'LISTAR_PLANOS', params: { TipoPlano: '1' }, session_id: sid,
+              });
+              if (planosResult.success && planosResult.data?.Planos?.length > 0) {
+                const planos = planosResult.data.Planos.slice(0, 8); // Máx 8 planos
+                planosTexto = '\n\n📶 *Nossos planos de internet:*\n' +
+                  planos.map(p => `• *${p.descricao}*`).join('\n') +
+                  '\n\nQuer saber mais sobre algum plano? 😊';
+                await logger.saveAction({
+                  session_id: sid, interaction_id: null,
+                  acao: 'LISTAR_PLANOS', descricao: 'Planos listados para cliente não cadastrado interessado',
+                  status: 'sucesso', dados_entrada: { TipoPlano: 1 },
+                  dados_saida: { total: planos.length }, tempo_ms: planosResult.tempo_ms,
+                });
+              }
+            } catch (e) {
+              console.error('[webhook] Erro ao listar planos (não crítico):', e.message);
+            }
+          }
+
           // Informar o cliente e encerrar este ciclo
           const respostaNaoCadastrado =
             `Não encontrei um cadastro no nosso sistema com o CPF informado 🤔\n\n` +
-            `Mas não se preocupe! Já registrei seu contato e *nossa equipe vai entrar em contato* com você para te ajudar! 😊\n\n` +
-            `Se preferir atendimento presencial:\n` +
+            `Mas não se preocupe! Já registrei seu contato e *nossa equipe vai entrar em contato* com você para te ajudar! 😊` +
+            planosTexto +
+            `\n\nSe preferir atendimento presencial:\n` +
             `📍 *Matozinhos*: R. José Dias Corrêa, 87A — Centro\n` +
             `📍 *Lagoa Santa*: R. Aleomar Baleeiro, 462 — Centro\n` +
             `📍 *Prudente de Morais*: R. José de Souza, 83A — Centro\n\n` +
@@ -524,6 +550,35 @@ async function processMessage(canal, body, replyFn) {
         cd_fatura: mkResult.data.CodigoFatura || mkResult.data.cd_fatura || mkResult.data.codigo_fatura,
       };
       console.log('[webhook] Boleto preparado:', { cd_fatura: boletoData.cd_fatura, temURL: !!boletoData.urlBoleto, temLinha: !!boletoData.linhaDigitavel });
+
+      // Tentar gerar PIX Copia e Cola (complementar ao boleto)
+      if (session.cpf_cnpj && (boletoData.cd_fatura || mkParams.cd_fatura)) {
+        try {
+          const pixResult = await n8nExecute({
+            action: 'GERAR_PIX',
+            params: {
+              doc: session.cpf_cnpj,
+              cd_fatura: boletoData.cd_fatura || mkParams.cd_fatura,
+              cd_cliente: session.cd_cliente_mk,
+            },
+            session_id: sid,
+          });
+          if (pixResult.success && pixResult.data?.texto_qrcode) {
+            boletoData.pixCopiaECola = pixResult.data.texto_qrcode;
+            console.log('[webhook] PIX Copia e Cola gerado com sucesso');
+            await logger.saveAction({
+              session_id: sid, interaction_id: null,
+              acao: 'GERAR_PIX', descricao: 'PIX Copia e Cola gerado para a fatura',
+              status: 'sucesso',
+              dados_entrada: { cd_fatura: boletoData.cd_fatura },
+              dados_saida: { temPix: true },
+              tempo_ms: pixResult.tempo_ms,
+            });
+          }
+        } catch (pixErr) {
+          console.error('[webhook] Erro ao gerar PIX (não crítico):', pixErr.message);
+        }
+      }
     } catch (err) {
       console.error('[webhook] Erro ao extrair dados do boleto:', err.message);
     }
@@ -559,10 +614,24 @@ async function processMessage(canal, body, replyFn) {
   let resposta;
   if (mkResult?._clienteNaoEncontrado) {
     // Cliente não encontrado no MK — lead já foi criada acima
+    // Listar planos se o cliente parece interessado em contratar
+    let planosExtra = '';
+    if (['CONTRATO', 'VIABILIDADE', 'CADASTRO'].includes(intencao)) {
+      try {
+        const planosRes = await n8nExecute({ action: 'LISTAR_PLANOS', params: { TipoPlano: '1' }, session_id: sid });
+        if (planosRes.success && planosRes.data?.Planos?.length > 0) {
+          const planos = planosRes.data.Planos.slice(0, 8);
+          planosExtra = '\n\n📶 *Nossos planos de internet:*\n' +
+            planos.map(p => `• *${p.descricao}*`).join('\n') +
+            '\n\nQuer saber mais sobre algum plano? 😊';
+        }
+      } catch (_) { /* não crítico */ }
+    }
     resposta =
       `Não encontrei um cadastro no nosso sistema com o CPF informado 🤔\n\n` +
-      `Mas não se preocupe! Já registrei seu contato e *nossa equipe vai entrar em contato* com você para te ajudar! 😊\n\n` +
-      `Se preferir atendimento presencial:\n` +
+      `Mas não se preocupe! Já registrei seu contato e *nossa equipe vai entrar em contato* com você para te ajudar! 😊` +
+      planosExtra +
+      `\n\nSe preferir atendimento presencial:\n` +
       `📍 *Matozinhos*: R. José Dias Corrêa, 87A — Centro\n` +
       `📍 *Lagoa Santa*: R. Aleomar Baleeiro, 462 — Centro\n` +
       `📍 *Prudente de Morais*: R. José de Souza, 83A — Centro\n\n` +
@@ -578,7 +647,10 @@ async function processMessage(canal, body, replyFn) {
     const protocolo = cadastroAtualizado.data?.protocolo || cadastroAtualizado.data?.CodigoLead || '';
     resposta = `Pronto! Registrei sua solicitação de atualização cadastral ✅${protocolo ? `\n📋 *Protocolo:* ${protocolo}` : ''}\nNossa equipe vai processar a alteração e se precisar, entra em contato pra confirmar.\nPosso te ajudar em mais alguma coisa?`;
   } else if (acaoMK && mkResult?.success) {
-    resposta = await formatResponse({ intencao, mkData: mkResult.data, session, historico });
+    // Enriquecer mkData com dados extras (boleto/PIX, diagnóstico)
+    const enrichedMkData = { ...mkResult.data };
+    if (boletoData) enrichedMkData._boleto = boletoData;
+    resposta = await formatResponse({ intencao, mkData: enrichedMkData, session, historico });
   } else if (acaoMK && !mkResult?.success) {
     resposta = 'Poxa, deu um probleminha pra consultar seus dados no sistema 😔 Vou te passar pra um colega da equipe resolver isso pra você! Só um minutinho 🙏';
     // Forçar escalonamento quando MK falha

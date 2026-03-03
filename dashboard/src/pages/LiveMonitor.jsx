@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Radio, Users, CheckCircle, Zap, Clock, Trash2, X, UserCheck, Bot, Send, Star, FileText, RefreshCw } from 'lucide-react';
+import { Radio, Users, CheckCircle, Zap, Clock, Trash2, X, UserCheck, Sparkles, Send, Star, FileText, RefreshCw } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useWS } from '../context/WebSocketContext.jsx';
@@ -329,7 +329,7 @@ export default function LiveMonitor() {
                   </button>
                   {isHumanAttending ? (
                     <button onClick={handleRelease} className="text-xs px-3 py-1.5 rounded-lg bg-conectiva-600 hover:bg-conectiva-500 text-white transition-colors flex items-center gap-1">
-                      <Bot size={12} /> Devolver à IA
+                      <Sparkles size={12} /> Devolver à IA
                     </button>
                   ) : (
                     <button onClick={handleTakeover} className="text-xs px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white transition-colors flex items-center gap-1">

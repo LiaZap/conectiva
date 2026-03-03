@@ -16,25 +16,25 @@ import { emit, emitToSession, EVENTS } from '../websocket/events.js';
 const router = Router();
 
 // ── Mensagem de pesquisa de satisfação (CSAT) ──
-const CSAT_MESSAGE = `Obrigado por entrar em contato com a *Conectiva Internet*! 😊
+const CSAT_MESSAGE = `Que bom que consegui te ajudar! 😊
 
-Antes de finalizar, gostaríamos de saber: *como você avalia nosso atendimento?*
+Antes de ir, me ajuda com uma coisinha? *Como você avalia o atendimento de hoje?*
 
-Responda com uma nota de *1 a 5*:
+Responde com uma nota de *1 a 5*:
 1️⃣ Péssimo
 2️⃣ Ruim
 3️⃣ Regular
 4️⃣ Bom
 5️⃣ Excelente
 
-Sua opinião é muito importante para nós! 💙`;
+Sua opinião ajuda a gente a melhorar cada vez mais! 💙`;
 
 const CSAT_THANKS = {
-  1: 'Lamentamos que sua experiência não tenha sido boa. 😔 Vamos trabalhar para melhorar! Obrigado pelo feedback.',
-  2: 'Agradecemos pelo feedback. Vamos nos esforçar para melhorar nosso atendimento! 🙏',
-  3: 'Obrigado pela avaliação! Vamos continuar melhorando para te atender cada vez melhor. 😊',
-  4: 'Que bom saber que foi bem atendido! Obrigado pela avaliação! 😊✅',
-  5: 'Ficamos muito felizes com sua avaliação! ⭐ Obrigado pela confiança na *Conectiva Internet*! 💙',
+  1: 'Poxa, sinto muito que sua experiência não foi boa 😔 Vou repassar seu feedback pro nosso time. Obrigada por responder!',
+  2: 'Entendi... obrigada pelo feedback sincero! Vou repassar pro time pra gente melhorar 🙏',
+  3: 'Obrigada pela nota! Vamos nos esforçar pra te atender ainda melhor na próxima 😊',
+  4: 'Que bom! Fico feliz que deu tudo certo 😊 Obrigada pela avaliação!',
+  5: 'Que demais, fico muito feliz! ⭐ Obrigada pela confiança na *Conectiva*! 💙',
 };
 
 // ── Buffer de mensagens (debounce) ──────────────────────
@@ -85,7 +85,7 @@ async function flushBuffer(telefone) {
   } catch (err) {
     console.error('[buffer] Erro ao processar buffer:', err.message);
     try {
-      await entry.replyFn(telefone, 'Desculpe, ocorreu um erro. Tente novamente em instantes.');
+      await entry.replyFn(telefone, 'Opa, deu um probleminha aqui! 😅 Pode mandar sua mensagem de novo?');
     } catch (_) { /* silencioso */ }
   }
 }
@@ -597,7 +597,7 @@ router.post('/webhook/whatsapp', async (req, res) => {
         } catch (audioErr) {
           console.error('[webhook] Erro ao processar áudio:', audioErr.message, audioErr.stack);
           // Fallback seguro
-          await sendText(telefone, '🎤 Recebi seu áudio, mas tive um problema ao processá-lo. Poderia digitar sua mensagem, por favor? 😊').catch(() => {});
+          await sendText(telefone, '🎤 Opa, não consegui ouvir seu áudio direito! Pode digitar pra mim o que você precisa? 😊').catch(() => {});
         }
 
         return res.json({ success: true });
@@ -700,7 +700,7 @@ router.post('/webhook/whatsapp', async (req, res) => {
           }
         } catch (imgErr) {
           console.error('[webhook] Erro ao processar imagem:', imgErr.message, imgErr.stack);
-          await sendText(telefone, '📷 Recebi sua imagem, mas tive um problema ao processá-la. Poderia descrever por texto? 😊').catch(() => {});
+          await sendText(telefone, '📷 Não consegui abrir sua imagem aqui! Pode me descrever por texto o que precisa? 😊').catch(() => {});
         }
 
         return res.json({ success: true });
@@ -839,7 +839,7 @@ router.post('/webhook/whatsapp', async (req, res) => {
           }
         } catch (docErr) {
           console.error('[webhook] Erro ao processar documento:', docErr.message, docErr.stack);
-          await sendText(telefone, '📄 Recebi seu documento, mas tive um problema ao processá-lo. Poderia descrever por texto? 😊').catch(() => {});
+          await sendText(telefone, '📄 Não consegui abrir seu documento aqui! Pode me contar por texto o que precisa? 😊').catch(() => {});
         }
 
         return res.json({ success: true });

@@ -12,7 +12,7 @@ const openai = new OpenAI({ apiKey: config.openaiApiKey });
 
 const MODEL = 'gpt-4o';
 
-const IMAGE_PROMPT = `Você é a assistente virtual da Conectiva Internet, um provedor de internet por fibra óptica.
+const IMAGE_PROMPT = `Você é uma atendente da Conectiva Internet, provedor de internet por fibra óptica.
 Analise esta imagem enviada por um cliente e descreva o que você vê de forma relevante para o atendimento.
 
 Tipos comuns de imagens que clientes enviam:
@@ -26,7 +26,7 @@ Tipos comuns de imagens que clientes enviam:
 Responda de forma objetiva e estruturada. Se não conseguir identificar o conteúdo, diga o que você vê.
 Sempre responda em português brasileiro.`;
 
-const DOCUMENT_PROMPT = `Você é a assistente virtual da Conectiva Internet, um provedor de internet por fibra óptica.
+const DOCUMENT_PROMPT = `Você é uma atendente da Conectiva Internet, provedor de internet por fibra óptica.
 Analise este documento (PDF) enviado por um cliente e extraia as informações relevantes.
 
 Tipos comuns de documentos que clientes enviam:

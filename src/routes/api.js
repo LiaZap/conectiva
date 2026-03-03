@@ -208,7 +208,7 @@ router.post('/api/sessions/:id/close', async (req, res) => {
 
     // Enviar pesquisa CSAT se sessão tinha cliente WhatsApp
     if (session.canal === 'whatsapp' && session.telefone) {
-      const csatMsg = `Obrigado por entrar em contato com a *Conectiva Internet*! 😊\n\n*Como você avalia nosso atendimento?*\nResponda de *1* (péssimo) a *5* (excelente) 💙`;
+      const csatMsg = `Que bom que conseguimos te ajudar! 😊\n\n*Como você avalia o atendimento de hoje?*\nResponde de *1* (péssimo) a *5* (excelente) 💙`;
       try {
         await sendText(session.telefone, csatMsg);
         await logger.saveMessage({ session_id: id, direcao: 'saida', conteudo: csatMsg, canal: 'whatsapp' });

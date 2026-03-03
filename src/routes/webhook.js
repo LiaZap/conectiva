@@ -228,6 +228,106 @@ async function processMessage(canal, body, replyFn) {
     if (session.cpf_cnpj) mkParams.doc = session.cpf_cnpj;
     if (session.cd_cliente_mk) mkParams.cd_cliente = session.cd_cliente_mk;
 
+    // ── Pré-requisito: identificar cliente no MK antes de ações que precisam cd_cliente ──
+    // Se temos CPF mas ainda não temos cd_cliente_mk, consultar MK primeiro
+    if (ACTIONS_REQUIRING_CUSTOMER.has(acaoMK) && session.cpf_cnpj && !mkParams.cd_cliente) {
+      console.log(`[webhook] ${acaoMK} precisa de cd_cliente — consultando MK primeiro...`);
+
+      const consultaResult = await n8nExecute({
+        action: 'CONSULTAR_CLIENTE', params: { doc: session.cpf_cnpj }, session_id: sid,
+      });
+
+      if (consultaResult.success && consultaResult.data) {
+        const cData = consultaResult.data;
+        const cdCliente = cData.CodigoCliente || cData.cd_cliente || cData.codigo_cliente
+                       || cData.CdCliente || cData.Codigo;
+        const nomeCliente = cData.NomeCliente || cData.nome_cliente || cData.RazaoSocial
+                         || cData.Nome;
+
+        if (cdCliente) {
+          // ✅ Cliente encontrado no MK — salvar e prosseguir
+          mkParams.cd_cliente = String(cdCliente);
+          await sessionService.update(sid, {
+            cd_cliente_mk: String(cdCliente),
+            ...(nomeCliente && !session.nome_cliente ? { nome_cliente: nomeCliente } : {}),
+          });
+          session.cd_cliente_mk = String(cdCliente);
+          if (nomeCliente) session.nome_cliente = nomeCliente;
+          console.log(`[webhook] Cliente encontrado: cd_cliente=${cdCliente}, nome=${nomeCliente}`);
+
+          await logger.saveAction({
+            session_id: sid, interaction_id: null,
+            acao: 'CONSULTAR_CLIENTE', descricao: 'Consulta automática CPF → Cliente encontrado no MK',
+            status: 'sucesso', dados_entrada: { doc: session.cpf_cnpj },
+            dados_saida: { cd_cliente: cdCliente, nome: nomeCliente },
+            tempo_ms: consultaResult.tempo_ms,
+          });
+        } else {
+          // ❌ Cliente NÃO encontrado no MK — criar lead e informar
+          console.log(`[webhook] Cliente NÃO encontrado no MK: CPF ${session.cpf_cnpj}`);
+
+          await logger.saveAction({
+            session_id: sid, interaction_id: null,
+            acao: 'CONSULTAR_CLIENTE', descricao: 'CPF consultado mas cliente não encontrado no MK',
+            status: 'erro', dados_entrada: { doc: session.cpf_cnpj },
+            dados_saida: consultaResult.data, tempo_ms: consultaResult.tempo_ms,
+          });
+
+          // Criar lead automaticamente para a equipe entrar em contato
+          try {
+            const leadResult = await n8nExecute({
+              action: 'NOVA_LEAD',
+              params: {
+                nome: session.nome_cliente || pushName || '',
+                telefone: telefone,
+                observacao: `Novo contato não cadastrado. CPF/CNPJ: ${session.cpf_cnpj}. Canal: ${canal}. Intenção: ${intencao}. Mensagem: ${message}`,
+              },
+              session_id: sid,
+            });
+
+            await logger.saveAction({
+              session_id: sid, interaction_id: null,
+              acao: 'NOVA_LEAD', descricao: 'Cliente não cadastrado — lead criada automaticamente',
+              status: leadResult.success ? 'sucesso' : 'erro',
+              dados_entrada: { cpf: session.cpf_cnpj, telefone },
+              dados_saida: leadResult.data, tempo_ms: leadResult.tempo_ms,
+            });
+            console.log('[webhook] Lead criada para cliente não cadastrado:', { success: leadResult.success });
+          } catch (leadErr) {
+            console.error('[webhook] Erro ao criar lead:', leadErr.message);
+          }
+
+          // Informar o cliente e encerrar este ciclo
+          const respostaNaoCadastrado =
+            `Não encontrei um cadastro no nosso sistema com o CPF informado 🤔\n\n` +
+            `Mas não se preocupe! Já registrei seu contato e *nossa equipe vai entrar em contato* com você para te ajudar! 😊\n\n` +
+            `Se preferir atendimento presencial:\n` +
+            `📍 *Matozinhos*: R. José Dias Corrêa, 87A — Centro\n` +
+            `📍 *Lagoa Santa*: R. Aleomar Baleeiro, 462 — Centro\n` +
+            `📍 *Prudente de Morais*: R. José de Souza, 83A — Centro\n\n` +
+            `Ou ligue: ☎️ *(31) 3712-1294* ou *(31) 3268-4691*`;
+
+          await replyFn(telefone, respostaNaoCadastrado);
+          await logger.saveMessage({ session_id: sid, direcao: 'saida', conteudo: respostaNaoCadastrado, canal });
+          await logger.saveInteraction({
+            session_id: sid, intencao, confianca, mensagem_cliente: message,
+            resposta_ia: respostaNaoCadastrado, acao_mk: 'CONSULTAR_CLIENTE',
+            mk_endpoint: consultaResult.endpoint, mk_sucesso: true,
+            mk_resposta: consultaResult.data,
+            status: 'cliente_nao_encontrado', tempo_ia_ms,
+            tempo_mk_ms: consultaResult.tempo_ms,
+            tempo_total_ms: Date.now() - totalStart,
+          });
+          emit(EVENTS.RESPOSTA_ENVIADA, { session_id: sid, intencao, resposta: respostaNaoCadastrado });
+          emitToSession(sid, EVENTS.RESPOSTA_ENVIADA, { resposta: respostaNaoCadastrado, direcao: 'saida' });
+          return;
+        }
+      } else {
+        // Erro na consulta MK — deixar seguir, vai falhar na ação principal e escalonar
+        console.error('[webhook] Erro ao consultar cliente no MK:', consultaResult.error);
+      }
+    }
+
     // ── Cadeia de dependências: algumas ações precisam de chamadas intermediárias ──
 
     // SEGUNDA_VIA precisa de cd_fatura (vem de FATURAS_PENDENTES)
@@ -294,9 +394,51 @@ async function processMessage(canal, body, replyFn) {
     emit(EVENTS.MK_RETORNOU, { session_id: sid, success: mkResult.success, acao: acaoMK });
     emitToSession(sid, EVENTS.MK_RETORNOU, { success: mkResult.success, data: mkResult.data });
 
-    // Salvar cd_cliente_mk se veio do MK
-    if (mkResult.success && mkResult.data?.cd_cliente && !session.cd_cliente_mk) {
-      await sessionService.update(sid, { cd_cliente_mk: mkResult.data.cd_cliente });
+    // Salvar cd_cliente_mk se veio do MK (CONSULTAR_CLIENTE retorna CodigoCliente)
+    if (mkResult.success && mkResult.data && !session.cd_cliente_mk) {
+      const d = mkResult.data;
+      const cdCliente = d.CodigoCliente || d.cd_cliente || d.codigo_cliente || d.CdCliente || d.Codigo;
+      const nomeCliente = d.NomeCliente || d.nome_cliente || d.RazaoSocial || d.Nome;
+
+      if (cdCliente) {
+        await sessionService.update(sid, {
+          cd_cliente_mk: String(cdCliente),
+          ...(nomeCliente && !session.nome_cliente ? { nome_cliente: nomeCliente } : {}),
+        });
+        session.cd_cliente_mk = String(cdCliente);
+        if (nomeCliente) session.nome_cliente = nomeCliente;
+        console.log(`[webhook] cd_cliente_mk salvo da resposta MK: ${cdCliente}`);
+      }
+    }
+
+    // Se CONSULTAR_CLIENTE não encontrou o cliente, criar lead e informar
+    if (acaoMK === 'CONSULTAR_CLIENTE' && mkResult?.success && mkResult.data && !session.cd_cliente_mk) {
+      console.log(`[webhook] CONSULTAR_CLIENTE: cliente não encontrado para CPF ${session.cpf_cnpj}`);
+
+      // Criar lead automaticamente
+      try {
+        const leadResult = await n8nExecute({
+          action: 'NOVA_LEAD',
+          params: {
+            nome: session.nome_cliente || pushName || '',
+            telefone: telefone,
+            observacao: `Novo contato não cadastrado. CPF/CNPJ: ${session.cpf_cnpj}. Canal: ${canal}. Intenção: ${intencao}`,
+          },
+          session_id: sid,
+        });
+        await logger.saveAction({
+          session_id: sid, interaction_id: null,
+          acao: 'NOVA_LEAD', descricao: 'Cliente não cadastrado — lead criada (via CONSULTAR_CLIENTE direto)',
+          status: leadResult.success ? 'sucesso' : 'erro',
+          dados_entrada: { cpf: session.cpf_cnpj, telefone },
+          dados_saida: leadResult.data, tempo_ms: leadResult.tempo_ms,
+        });
+      } catch (leadErr) {
+        console.error('[webhook] Erro ao criar lead:', leadErr.message);
+      }
+
+      // Override: substituir resposta padrão por mensagem de cliente não encontrado
+      mkResult._clienteNaoEncontrado = true;
     }
   }
 
@@ -409,7 +551,17 @@ async function processMessage(canal, body, replyFn) {
 
   // 9. Formatar resposta final
   let resposta;
-  if (negociacao && negociacao.mensagem) {
+  if (mkResult?._clienteNaoEncontrado) {
+    // Cliente não encontrado no MK — lead já foi criada acima
+    resposta =
+      `Não encontrei um cadastro no nosso sistema com o CPF informado 🤔\n\n` +
+      `Mas não se preocupe! Já registrei seu contato e *nossa equipe vai entrar em contato* com você para te ajudar! 😊\n\n` +
+      `Se preferir atendimento presencial:\n` +
+      `📍 *Matozinhos*: R. José Dias Corrêa, 87A — Centro\n` +
+      `📍 *Lagoa Santa*: R. Aleomar Baleeiro, 462 — Centro\n` +
+      `📍 *Prudente de Morais*: R. José de Souza, 83A — Centro\n\n` +
+      `Ou ligue: ☎️ *(31) 3712-1294* ou *(31) 3268-4691*`;
+  } else if (negociacao && negociacao.mensagem) {
     // Usa mensagem da negociação (desconto/parcelas calculados)
     resposta = negociacao.mensagem;
   } else if (diagnostico) {

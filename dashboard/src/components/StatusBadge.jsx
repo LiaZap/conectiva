@@ -30,6 +30,8 @@ const STYLES = {
   VIABILIDADE:        'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30',
   // reincidência
   reincidencia:       'bg-orange-500/15 text-orange-400 border border-orange-500/30',
+  // status de interação
+  cliente_nao_encontrado: 'bg-rose-500/15 text-rose-400 border border-rose-500/30',
 };
 
 const LABELS = {
@@ -58,6 +60,7 @@ const LABELS = {
   HUMANO: 'Humano',
   VIABILIDADE: 'Viabilidade',
   reincidencia: 'Reincidência',
+  cliente_nao_encontrado: 'Não cadastrado',
 };
 
 // Dot indicator colors (pulsing for active states)

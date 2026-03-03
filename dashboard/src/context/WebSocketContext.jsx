@@ -7,9 +7,9 @@ const WS_URL = import.meta.env.VITE_WS_URL || (import.meta.env.DEV ? 'http://loc
 const WebSocketContext = createContext(null);
 
 const WS_EVENTS = [
-  'nova_mensagem', 'ia_classificou', 'transcrevendo_audio', 'chamando_mk',
-  'mk_retornou', 'resposta_enviada', 'escalonamento', 'sessao_encerrada',
-  'sessao_atualizada',
+  'nova_mensagem', 'ia_classificou', 'transcrevendo_audio', 'analisando_midia',
+  'mensagem_atualizada', 'chamando_mk', 'mk_retornou', 'resposta_enviada',
+  'escalonamento', 'sessao_encerrada', 'sessao_atualizada',
 ];
 
 export function WebSocketProvider({ children }) {

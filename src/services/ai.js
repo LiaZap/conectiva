@@ -303,15 +303,15 @@ export async function formatResponse({ intencao, mkData, session, historico }) {
     console.error('[ai] Erro ao formatar resposta:', err.message);
 
     const fallbacks = {
-      SEGUNDA_VIA: 'Estou gerando sua segunda via. Em instantes você receberá o boleto atualizado.',
-      FATURAS: 'Consultei suas faturas. Para mais detalhes, posso transferir para um atendente.',
-      SUPORTE: 'Identifiquei seu problema técnico. Vou abrir uma ordem de serviço para que nossa equipe resolva o mais rápido possível.',
-      DESBLOQUEIO: 'Estou processando o desbloqueio da sua conexão. Aguarde alguns instantes.',
+      SEGUNDA_VIA: 'Tô gerando sua segunda via! Daqui a pouquinho você recebe o boleto atualizado 😊',
+      FATURAS: 'Puxei suas faturas aqui! Se precisar de mais detalhes, posso te passar pra um colega da equipe 😊',
+      SUPORTE: 'Entendi seu problema! Vou abrir uma ordem de serviço e nosso técnico vai resolver pra você o mais rápido possível 💪',
+      DESBLOQUEIO: 'Tô processando o desbloqueio da sua conexão! Aguarda só uns instantes 😊',
     };
 
     return (
       fallbacks[intencao] ||
-      'Desculpe, tive um problema ao processar sua solicitação. Vou transferir para um atendente que poderá ajudá-lo melhor.'
+      'Opa, deu um probleminha aqui 😔 Vou te passar pra um colega da equipe que vai te ajudar! Só um minutinho 🙏'
     );
   }
 }

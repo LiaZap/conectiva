@@ -42,7 +42,7 @@ export default function SessionDetail() {
   if (loading) return <div className="p-6 text-slate-400">Carregando...</div>;
   if (!data) return <div className="p-6 text-red-400">Sessão não encontrada</div>;
 
-  const { session: s, messages, interactions, actions } = data;
+  const { session: s, messages = [], interactions = [], actions = [] } = data;
 
   const duration = s.created_at && s.updated_at
     ? formatDistanceStrict(new Date(s.created_at), new Date(s.updated_at), { locale: ptBR })

@@ -241,7 +241,7 @@ export default function Metrics() {
             </span>
             <div className="flex gap-4 mt-4 text-[10px]">
               <div className="text-center">
-                <span className="block text-green-400 font-semibold">{satisfaction.notas?.nota_5 + satisfaction.notas?.nota_4 || 0}</span>
+                <span className="block text-green-400 font-semibold">{(satisfaction.notas?.nota_5 || 0) + (satisfaction.notas?.nota_4 || 0)}</span>
                 <span className="text-slate-500">Promotores</span>
               </div>
               <div className="text-center">

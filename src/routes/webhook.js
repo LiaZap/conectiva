@@ -195,9 +195,10 @@ async function processMessage(canal, body, replyFn) {
   // Ações que PRECISAM de CPF ou cd_cliente para funcionar
   const ACTIONS_REQUIRING_CUSTOMER = new Set([
     'FATURAS_PENDENTES', 'SEGUNDA_VIA', 'CONEXOES_CLIENTE', 'CONTRATOS_CLIENTE',
-    'CRIAR_OS', 'AUTO_DESBLOQUEIO', 'NOVO_CONTRATO', 'NOVA_LEAD',
+    'CRIAR_OS', 'AUTO_DESBLOQUEIO', 'NOVO_CONTRATO',
     'FATURAS_AVANCADO', 'ATUALIZAR_CADASTRO', 'CONSULTAR_CADASTRO',
   ]);
+  // NOTA: NOVA_LEAD, CRIAR_PESSOA e LISTAR_PLANOS NÃO precisam de cd_cliente
 
   // Se precisa CPF (IA pediu OU ação MK requer) e não tem, pedir ao cliente
   const precisaIdentificacao = precisaCPF || (acaoMK && ACTIONS_REQUIRING_CUSTOMER.has(acaoMK));
@@ -414,6 +415,48 @@ async function processMessage(canal, body, replyFn) {
       }
     }
 
+    // NOVO_CONTRATO — preencher parâmetros obrigatórios com defaults
+    if (acaoMK === 'NOVO_CONTRATO' && mkParams.codplano) {
+      console.log(`[webhook] NOVO_CONTRATO: criando contrato com plano ${mkParams.codplano}...`);
+
+      // Mapear dia de vencimento para código da regra de vencimento
+      const REGRAS_VENCIMENTO = {
+        '1': 104, '3': 105, '6': 106, '7': 52, '9': 107, '10': 1,
+        '12': 108, '15': 103, '20': 2, '27': 53, '29': 54, '30': 3,
+      };
+      const diaVcto = mkParams.dia_vencimento || '10';
+      const codigoRegraVcto = REGRAS_VENCIMENTO[diaVcto] || 1; // default dia 10
+
+      mkParams.CodigoCliente = mkParams.cd_cliente;
+      mkParams.CodigoTipoPlano = '1'; // Internet
+      mkParams.CodigoPlanoAcesso = String(mkParams.codplano);
+      mkParams.CodigoRegraVencimento = String(codigoRegraVcto);
+      mkParams.CodigoSLA = '2'; // Pessoa Física
+      mkParams.CodigoRegraBloqueio = '1001'; // Redução por inadimplência
+      mkParams.CodigoFormaPagamento = '3'; // Boleto
+      mkParams.CodigoProfilePagamento = '12'; // SICOOB - Conectiva Internet
+      mkParams.CodigoMetodoFaturamento = '1';
+      mkParams.CodigoPlanoContas = '7.00.04.00.00'; // Duplicatas serviços prestados
+    }
+
+    // CRIAR_PESSOA — preparar dados do novo cadastro
+    if (acaoMK === 'CRIAR_PESSOA') {
+      console.log(`[webhook] CRIAR_PESSOA: criando cadastro para ${mkParams.doc || session.cpf_cnpj}...`);
+      mkParams.doc = mkParams.doc || session.cpf_cnpj;
+      mkParams.nome = mkParams.nome || session.nome_cliente || pushName || '';
+      mkParams.fone = mkParams.fone || telefone;
+    }
+
+    // NOVA_LEAD — preparar dados para não-clientes (não precisa cd_cliente)
+    if (acaoMK === 'NOVA_LEAD') {
+      console.log(`[webhook] NOVA_LEAD: registrando interesse de ${telefone}...`);
+      mkParams.nome = mkParams.nome || session.nome_cliente || pushName || '';
+      mkParams.telefone = mkParams.telefone || telefone;
+      if (!mkParams.observacao) {
+        mkParams.observacao = `Interesse registrado via chat. Canal: ${canal}. Intenção: ${intencao}. Mensagem: ${message}`;
+      }
+    }
+
     // ── Executar a ação principal (se não foi resolvida na etapa de dependência) ──
     if (!mkResult) {
       mkResult = await n8nExecute({ action: acaoMK, params: mkParams, session_id: sid });
@@ -610,6 +653,81 @@ async function processMessage(canal, body, replyFn) {
   // 8.8. Se intenção é VIABILIDADE e MK retornou regiões, a IA vai comparar com o endereço do cliente
   // A formatResponse() já recebe os dados do MK e o histórico — ela saberá formatar a resposta de cobertura
 
+  // 8.9. Se NOVO_CONTRATO foi executado, logar e notificar
+  let contratoCriado = null;
+  if (acaoMK === 'NOVO_CONTRATO' && mkResult?.success && mkResult.data) {
+    try {
+      contratoCriado = mkResult.data;
+      const codContrato = contratoCriado.CodigoContrato || contratoCriado.codigo_contrato || contratoCriado.Codigo || '';
+      console.log('[webhook] Contrato criado:', { codContrato, codplano: paramsMK?.codplano });
+
+      await logger.saveAction({
+        session_id: sid, interaction_id: null,
+        acao: 'NOVO_CONTRATO', descricao: `Contrato criado para plano ${paramsMK?.codplano}`,
+        status: 'sucesso',
+        dados_entrada: { cd_cliente: session.cd_cliente_mk, codplano: paramsMK?.codplano },
+        dados_saida: contratoCriado, tempo_ms: mkResult.tempo_ms,
+      });
+
+      await logger.saveInteraction({
+        session_id: sid, intencao, confianca, mensagem_cliente: message,
+        resposta_ia: '', acao_mk: 'NOVO_CONTRATO', mk_endpoint: mkResult.endpoint,
+        mk_sucesso: true, mk_resposta: contratoCriado,
+        status: 'contrato_criado', tempo_ia_ms, tempo_mk_ms: mkResult.tempo_ms,
+        tempo_total_ms: Date.now() - totalStart, contrato_criado: true,
+      });
+    } catch (err) {
+      console.error('[webhook] Erro ao logar contrato criado:', err.message);
+    }
+  }
+
+  // 8.10. Se CRIAR_PESSOA foi executado, logar resultado
+  let pessoaCriada = null;
+  if (acaoMK === 'CRIAR_PESSOA' && mkResult?.success && mkResult.data) {
+    try {
+      pessoaCriada = mkResult.data;
+      const cdCliente = pessoaCriada.CodigoCliente || pessoaCriada.cd_cliente || pessoaCriada.Codigo;
+      console.log('[webhook] Pessoa criada:', { cdCliente });
+
+      if (cdCliente) {
+        await sessionService.update(sid, { cd_cliente_mk: String(cdCliente) });
+        session.cd_cliente_mk = String(cdCliente);
+      }
+
+      await logger.saveAction({
+        session_id: sid, interaction_id: null,
+        acao: 'CRIAR_PESSOA', descricao: 'Cadastro de pessoa criado no MK',
+        status: 'sucesso',
+        dados_entrada: { doc: paramsMK?.doc, nome: paramsMK?.nome },
+        dados_saida: pessoaCriada, tempo_ms: mkResult.tempo_ms,
+      });
+    } catch (err) {
+      console.error('[webhook] Erro ao logar pessoa criada:', err.message);
+    }
+  }
+
+  // 8.11. Se NOVA_LEAD foi executada (ação explícita da IA), logar e notificar
+  let leadCriada = null;
+  if (acaoMK === 'NOVA_LEAD' && mkResult?.success && mkResult.data) {
+    try {
+      leadCriada = mkResult.data;
+      console.log('[webhook] Lead criada (explícita):', { telefone, nome: paramsMK?.nome });
+
+      await logger.saveAction({
+        session_id: sid, interaction_id: null,
+        acao: 'NOVA_LEAD', descricao: 'Lead criada pela IA para registro de interesse',
+        status: 'sucesso',
+        dados_entrada: { nome: paramsMK?.nome, telefone, observacao: paramsMK?.observacao },
+        dados_saida: leadCriada, tempo_ms: mkResult.tempo_ms,
+      });
+
+      // Notificar grupo de atendentes
+      notifyNewLead({ session, intencao, mensagem: message }).catch(() => {});
+    } catch (err) {
+      console.error('[webhook] Erro ao logar lead criada:', err.message);
+    }
+  }
+
   // 9. Formatar resposta final
   let resposta;
   if (mkResult?._clienteNaoEncontrado) {
@@ -647,9 +765,12 @@ async function processMessage(canal, body, replyFn) {
     const protocolo = cadastroAtualizado.data?.protocolo || cadastroAtualizado.data?.CodigoLead || '';
     resposta = `Pronto! Registrei sua solicitação de atualização cadastral ✅${protocolo ? `\n📋 *Protocolo:* ${protocolo}` : ''}\nNossa equipe vai processar a alteração e se precisar, entra em contato pra confirmar.\nPosso te ajudar em mais alguma coisa?`;
   } else if (acaoMK && mkResult?.success) {
-    // Enriquecer mkData com dados extras (boleto/PIX, diagnóstico)
+    // Enriquecer mkData com dados extras (boleto/PIX, contrato, lead, pessoa)
     const enrichedMkData = { ...mkResult.data };
     if (boletoData) enrichedMkData._boleto = boletoData;
+    if (contratoCriado) enrichedMkData._contratoCriado = contratoCriado;
+    if (pessoaCriada) enrichedMkData._pessoaCriada = pessoaCriada;
+    if (leadCriada) enrichedMkData._leadCriada = leadCriada;
     resposta = await formatResponse({ intencao, mkData: enrichedMkData, session, historico });
   } else if (acaoMK && !mkResult?.success) {
     resposta = 'Poxa, deu um probleminha pra consultar seus dados no sistema 😔 Vou te passar pra um colega da equipe resolver isso pra você! Só um minutinho 🙏';
@@ -716,6 +837,7 @@ async function processMessage(canal, body, replyFn) {
     tempo_ia_ms, tempo_mk_ms, tempo_total_ms,
     boleto_gerado: intencao === 'SEGUNDA_VIA' && mkResult?.success && boletoEnviado,
     desbloqueio_executado: intencao === 'DESBLOQUEIO' && mkResult?.success,
+    contrato_criado: !!contratoCriado,
   });
 
   if (acaoMK) {

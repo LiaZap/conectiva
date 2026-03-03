@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Radio, Users, CheckCircle, Zap, Clock, Trash2, X, UserCheck, Bot, Send, Star, FileText } from 'lucide-react';
+import { Radio, Users, CheckCircle, Zap, Clock, Trash2, X, UserCheck, Bot, Send, Star, FileText, RefreshCw } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useWS } from '../context/WebSocketContext.jsx';
@@ -252,8 +252,17 @@ export default function LiveMonitor() {
                       </div>
                       <div className="flex items-center justify-between gap-1 mt-0.5">
                         <span className="text-xs text-slate-400 truncate">{s.intencao_principal || 'Aguardando...'}</span>
-                        <StatusBadge value={s.status} />
+                        <div className="flex items-center gap-1">
+                          {s.reincidencia && <StatusBadge value="reincidencia" size="sm" />}
+                          <StatusBadge value={s.status} />
+                        </div>
                       </div>
+                      {s.reincidencia && (
+                        <div className="flex items-center gap-1 mt-0.5 text-[10px] text-orange-400/80">
+                          <RefreshCw size={9} />
+                          <span>{(s.total_contatos_anteriores || 0) + 1}º contato</span>
+                        </div>
+                      )}
                       <div className="flex items-center gap-1 mt-1 text-[10px] text-slate-500">
                         <Clock size={10} />
                         {s.created_at && formatDistanceToNow(new Date(s.created_at), { addSuffix: true, locale: ptBR })}

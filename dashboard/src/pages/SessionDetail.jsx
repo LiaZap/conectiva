@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, User, MessageSquare, Brain, Link, Clock, ChevronDown, ChevronRight, Star, FileText } from 'lucide-react';
+import { ArrowLeft, User, MessageSquare, Brain, Link, Clock, ChevronDown, ChevronRight, Star, FileText, RefreshCw } from 'lucide-react';
 import { format, formatDistanceStrict } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { getSession } from '../services/api.js';
@@ -42,7 +42,7 @@ export default function SessionDetail() {
   if (loading) return <div className="p-6 text-slate-400">Carregando...</div>;
   if (!data) return <div className="p-6 text-red-400">Sessão não encontrada</div>;
 
-  const { session: s, messages = [], interactions = [], actions = [] } = data;
+  const { session: s, messages = [], interactions = [], actions = [], previous_sessions: previousSessions = [] } = data;
 
   const duration = s.created_at && s.updated_at
     ? formatDistanceStrict(new Date(s.created_at), new Date(s.updated_at), { locale: ptBR })
@@ -57,6 +57,7 @@ export default function SessionDetail() {
         </button>
         <h1 className="text-lg font-bold">Detalhes da Sessão</h1>
         <StatusBadge value={s.status} />
+        {s.reincidencia && <StatusBadge value="reincidencia" />}
       </div>
 
       {/* SEÇÃO 1 — Dados do Cliente */}
@@ -78,6 +79,47 @@ export default function SessionDetail() {
           ))}
         </div>
       </div>
+
+      {/* SEÇÃO — Contatos Anteriores (reincidência) */}
+      {previousSessions.length > 0 && (
+        <div className="card">
+          <h2 className="text-sm font-semibold text-orange-400 flex items-center gap-2 mb-3">
+            <RefreshCw size={16} /> Contatos Anteriores
+            <span className="text-[10px] bg-orange-500/15 text-orange-400 border border-orange-500/30 px-2 py-0.5 rounded-full font-medium">
+              {previousSessions.length + 1}º contato
+            </span>
+          </h2>
+          <div className="space-y-2">
+            {previousSessions.map((ps) => (
+              <button
+                key={ps.id}
+                onClick={() => navigate(`/session/${ps.id}`)}
+                className="w-full text-left p-3 rounded-lg border border-slate-700 hover:bg-slate-800/50 transition-colors"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <StatusBadge value={ps.status} size="sm" />
+                    <StatusBadge value={ps.intencao_principal} size="sm" />
+                    {ps.nota_satisfacao && (
+                      <span className="flex items-center gap-0.5 text-[10px] text-yellow-400">
+                        <Star size={10} className="fill-yellow-400" /> {ps.nota_satisfacao}/5
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                    <span>{ps.total_mensagens || 0} msgs</span>
+                    <span>{ps.resolvida_por === 'humano' ? '👤 Humano' : ps.resolvida_por === 'ia' ? '🤖 IA' : '—'}</span>
+                    {ps.created_at && <span>{format(new Date(ps.created_at), 'dd/MM/yy HH:mm')}</span>}
+                  </div>
+                </div>
+                {ps.resumo_ia && (
+                  <p className="text-[11px] text-slate-400 mt-1.5 line-clamp-2 leading-tight">{ps.resumo_ia}</p>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* SEÇÃO 2 — Chat Completo */}
       <div className="card">

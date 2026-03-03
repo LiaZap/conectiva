@@ -40,24 +40,56 @@ export async function findOrCreate({ telefone, canal, pushName }) {
   );
 
   if (recent.length > 0) {
-    await query(
-      `UPDATE sessions SET status = 'ativa', expires_at = NOW() + $2 * INTERVAL '1 minute', updated_at = NOW()
-       WHERE id = $1`,
-      [recent[0].id, ttl]
+    // Recalcular reincidência ao reativar
+    const { rows: countRows } = await query(
+      `SELECT COUNT(*) FROM sessions WHERE telefone = $1 AND id != $2`,
+      [telefone, recent[0].id]
     );
-    console.log('[session] Sessão reativada:', recent[0].id);
-    return { ...recent[0], status: 'ativa' };
+    const totalAnteriores = parseInt(countRows[0].count);
+
+    await query(
+      `UPDATE sessions SET status = 'ativa', expires_at = NOW() + $2 * INTERVAL '1 minute',
+       reincidencia = $3, total_contatos_anteriores = $4, updated_at = NOW()
+       WHERE id = $1`,
+      [recent[0].id, ttl, totalAnteriores > 0, totalAnteriores]
+    );
+    console.log('[session] Sessão reativada:', recent[0].id, totalAnteriores > 0 ? `(reincidência #${totalAnteriores + 1})` : '');
+    return { ...recent[0], status: 'ativa', reincidencia: totalAnteriores > 0, total_contatos_anteriores: totalAnteriores };
   }
 
   // 3. Criar nova sessão somente se não existe nenhuma recente
-  const { rows: created } = await query(
-    `INSERT INTO sessions (canal, telefone, nome_cliente, status, expires_at)
-     VALUES ($1, $2, $3, 'ativa', NOW() + $4 * INTERVAL '1 minute')
-     RETURNING *`,
-    [canal, telefone, pushName || null, ttl]
+  // Verificar reincidência antes de criar
+  const { rows: countRows } = await query(
+    `SELECT COUNT(*) FROM sessions WHERE telefone = $1`,
+    [telefone]
   );
-  console.log('[session] Nova sessão criada:', created[0].id);
+  const totalAnteriores = parseInt(countRows[0].count);
+  const isReincidencia = totalAnteriores > 0;
+
+  const { rows: created } = await query(
+    `INSERT INTO sessions (canal, telefone, nome_cliente, status, expires_at, reincidencia, total_contatos_anteriores)
+     VALUES ($1, $2, $3, 'ativa', NOW() + $4 * INTERVAL '1 minute', $5, $6)
+     RETURNING *`,
+    [canal, telefone, pushName || null, ttl, isReincidencia, totalAnteriores]
+  );
+  console.log('[session] Nova sessão criada:', created[0].id, isReincidencia ? `(reincidência #${totalAnteriores + 1})` : '');
   return created[0];
+}
+
+/**
+ * Busca sessões anteriores do mesmo telefone (para exibir reincidência no dashboard).
+ */
+export async function getPreviousSessions(telefone, currentSessionId, limit = 10) {
+  if (!telefone) return [];
+  const { rows } = await query(
+    `SELECT id, canal, status, intencao_principal, total_mensagens,
+            resolvida_por, nota_satisfacao, resumo_ia, created_at, updated_at
+     FROM sessions
+     WHERE telefone = $1 AND id != $2
+     ORDER BY created_at DESC LIMIT $3`,
+    [telefone, currentSessionId, limit]
+  );
+  return rows;
 }
 
 /**

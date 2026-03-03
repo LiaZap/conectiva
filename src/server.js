@@ -142,6 +142,11 @@ async function runMigrations() {
     await query("ALTER TABLE sessions DROP CONSTRAINT IF EXISTS sessions_status_check");
     await query("ALTER TABLE sessions ADD CONSTRAINT sessions_status_check CHECK (status IN ('ativa', 'aguardando_humano', 'finalizada', 'expirada', 'aguardando_avaliacao'))");
     console.log('[migration] Migrações v2 aplicadas (CSAT + Resumo IA)');
+
+    // v3: Reincidência — detectar números que já entraram em contato
+    await query('ALTER TABLE sessions ADD COLUMN IF NOT EXISTS reincidencia BOOLEAN DEFAULT false');
+    await query('ALTER TABLE sessions ADD COLUMN IF NOT EXISTS total_contatos_anteriores INTEGER DEFAULT 0');
+    console.log('[migration] Migrações v3 aplicadas (Reincidência)');
   } catch (err) {
     console.error('[migration] Erro nas migrações:', err.message);
   }

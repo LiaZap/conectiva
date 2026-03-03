@@ -27,6 +27,8 @@ const STYLES = {
   CONTRATO:           'bg-indigo-500/15 text-indigo-400 border border-indigo-500/30',
   DESBLOQUEIO:        'bg-orange-500/15 text-orange-400 border border-orange-500/30',
   HUMANO:             'bg-red-500/15 text-red-400 border border-red-500/30',
+  // reincidência
+  reincidencia:       'bg-orange-500/15 text-orange-400 border border-orange-500/30',
 };
 
 const LABELS = {
@@ -53,6 +55,7 @@ const LABELS = {
   CONTRATO: 'Contrato',
   DESBLOQUEIO: 'Desbloqueio',
   HUMANO: 'Humano',
+  reincidencia: 'Reincidência',
 };
 
 // Dot indicator colors (pulsing for active states)

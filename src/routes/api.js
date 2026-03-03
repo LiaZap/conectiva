@@ -20,17 +20,18 @@ router.use(requireAuth);
 // Por padrão mostra apenas sessões das últimas 24h (exceto se filtros específicos forem passados)
 router.get('/api/sessions', async (req, res) => {
   try {
-    const { status, canal, intencao, data_inicio, data_fim, todas, limit = 50, offset = 0 } = req.query;
+    const { status, canal, intencao, reincidencia, data_inicio, data_fim, todas, limit = 50, offset = 0 } = req.query;
 
     const conditions = [];
     const params = [];
     let idx = 1;
 
-    if (status)      { conditions.push(`s.status = $${idx++}`);              params.push(status); }
-    if (canal)       { conditions.push(`s.canal = $${idx++}`);               params.push(canal); }
-    if (intencao)    { conditions.push(`s.intencao_principal = $${idx++}`);   params.push(intencao); }
-    if (data_inicio) { conditions.push(`s.created_at >= $${idx++}`);         params.push(data_inicio); }
-    if (data_fim)    { conditions.push(`s.created_at <= $${idx++}`);         params.push(data_fim); }
+    if (status)       { conditions.push(`s.status = $${idx++}`);              params.push(status); }
+    if (canal)        { conditions.push(`s.canal = $${idx++}`);               params.push(canal); }
+    if (intencao)     { conditions.push(`s.intencao_principal = $${idx++}`);   params.push(intencao); }
+    if (reincidencia) { conditions.push(`s.reincidencia = true`); }
+    if (data_inicio)  { conditions.push(`s.created_at >= $${idx++}`);         params.push(data_inicio); }
+    if (data_fim)     { conditions.push(`s.created_at <= $${idx++}`);         params.push(data_fim); }
 
     // Filtro padrão: últimas 24h (exceto se 'todas=true' ou filtros de data foram passados)
     if (!todas && !data_inicio && !data_fim) {
@@ -63,10 +64,11 @@ router.get('/api/sessions/:id', async (req, res) => {
     const session = await sessionService.findById(id);
     if (!session) return res.status(404).json({ success: false, error: 'Sessão não encontrada' });
 
-    const [messages, interactions, actions] = await Promise.all([
+    const [messages, interactions, actions, previousSessions] = await Promise.all([
       query('SELECT * FROM messages WHERE session_id = $1 ORDER BY created_at ASC', [id]),
       query('SELECT * FROM interactions_log WHERE session_id = $1 ORDER BY created_at ASC', [id]),
       query('SELECT * FROM ai_actions_log WHERE session_id = $1 ORDER BY created_at ASC', [id]),
+      sessionService.getPreviousSessions(session.telefone, id),
     ]);
 
     res.json({
@@ -76,6 +78,7 @@ router.get('/api/sessions/:id', async (req, res) => {
         messages: messages.rows,
         interactions: interactions.rows,
         actions: actions.rows,
+        previous_sessions: previousSessions,
       },
     });
   } catch (err) {

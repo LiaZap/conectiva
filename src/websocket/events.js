@@ -11,6 +11,7 @@ export const EVENTS = {
   IA_CLASSIFICOU: 'ia_classificou',
   TRANSCREVENDO_AUDIO: 'transcrevendo_audio',
   ANALISANDO_MIDIA: 'analisando_midia',
+  MENSAGEM_ATUALIZADA: 'mensagem_atualizada',
   CHAMANDO_MK: 'chamando_mk',
   MK_RETORNOU: 'mk_retornou',
   RESPOSTA_ENVIADA: 'resposta_enviada',

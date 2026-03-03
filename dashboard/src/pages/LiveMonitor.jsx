@@ -71,7 +71,13 @@ export default function LiveMonitor() {
     if (!selectedId) return;
     const unsub1 = subscribe('nova_mensagem', (data) => {
       if (data.session_id !== selectedId) return;
-      setMessages((prev) => [...prev, { direcao: 'entrada', conteudo: data.message, created_at: data.timestamp }]);
+      setMessages((prev) => [...prev, {
+        id: data.message_id || null,
+        direcao: 'entrada',
+        conteudo: data.message,
+        created_at: data.timestamp,
+        metadata: data.metadata || {},
+      }]);
     });
     const unsub2 = subscribe('resposta_enviada', (data) => {
       if (data.session_id !== selectedId) return;
@@ -81,6 +87,14 @@ export default function LiveMonitor() {
         created_at: data.timestamp,
         remetente: data.remetente || 'bot',
       }]);
+    });
+    // Atualizar metadata de mensagem (ex: imagem/documento carregados)
+    const unsub6 = subscribe('mensagem_atualizada', (data) => {
+      if (data.session_id !== selectedId) return;
+      // Recarregar todas as mensagens da sessão para obter metadata completa
+      getSession(selectedId).then((r) => {
+        if (r.success) setMessages(r.data.messages);
+      }).catch(() => {});
     });
     const unsub3 = subscribe('ia_classificou', (data) => {
       if (data.session_id !== selectedId) return;
@@ -99,7 +113,7 @@ export default function LiveMonitor() {
         return updated;
       });
     });
-    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); };
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); };
   }, [selectedId, subscribe]);
 
   // Auto-scroll chat

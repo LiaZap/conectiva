@@ -576,18 +576,25 @@ router.post('/webhook/whatsapp', async (req, res) => {
           if (imageBase64) {
             result = await analyzeImage(imageBase64, mediaMimetype, message);
 
-            // Salvar thumbnail no metadata (até 500KB para não sobrecarregar o banco)
-            const thumbBase64 = imageBase64.length <= 500 * 1024 ? imageBase64 : null;
+            // Salvar imagem no metadata (até 2MB base64 — cobre maioria das imagens WhatsApp)
+            const thumbBase64 = imageBase64.length <= 2 * 1024 * 1024 ? imageBase64 : null;
+            const mimeImg = (mediaMimetype || 'image/jpeg').split(';')[0].trim();
             if (imgMsg?.id) {
               const metadataObj = {
                 type: 'image',
-                mimetype: (mediaMimetype || 'image/jpeg').split(';')[0].trim(),
+                mimetype: mimeImg,
                 ...(thumbBase64 ? { image_base64: thumbBase64 } : {}),
               };
               await query(
                 `UPDATE messages SET metadata = $1 WHERE id = $2`,
                 [JSON.stringify(metadataObj), imgMsg.id]
               );
+              // Emitir atualização para o dashboard atualizar em tempo real
+              emitToSession(sid, EVENTS.MENSAGEM_ATUALIZADA, {
+                session_id: sid,
+                message_id: imgMsg.id,
+                metadata: metadataObj,
+              });
             }
 
             // Logar ação
@@ -680,10 +687,14 @@ router.post('/webhook/whatsapp', async (req, res) => {
             await logger.saveMessage({ session_id: sid, direcao: 'saida', conteudo: unsupportedMsg, canal: 'whatsapp' });
 
             if (docMsg?.id) {
+              const unsupMetadata = { type: 'document', filename: mediaFilename, mimetype: mimeDoc };
               await query(
                 `UPDATE messages SET metadata = $1 WHERE id = $2`,
-                [JSON.stringify({ type: 'document', filename: mediaFilename, mimetype: mimeDoc }), docMsg.id]
+                [JSON.stringify(unsupMetadata), docMsg.id]
               );
+              emitToSession(sid, EVENTS.MENSAGEM_ATUALIZADA, {
+                session_id: sid, message_id: docMsg.id, metadata: unsupMetadata,
+              });
             }
 
             emit(EVENTS.RESPOSTA_ENVIADA, { session_id: sid, resposta: unsupportedMsg });
@@ -695,12 +706,25 @@ router.post('/webhook/whatsapp', async (req, res) => {
           if (docBase64) {
             result = await analyzeDocument(docBase64, mediaMimetype, mediaFilename, message);
 
-            // Salvar metadata do documento (sem base64 — documentos são grandes)
+            // Salvar metadata do documento (com base64 para PDFs até 5MB para visualização no dashboard)
+            const docBase64ForDash = (mimeDoc === 'application/pdf' && docBase64.length <= 5 * 1024 * 1024) ? docBase64 : null;
             if (docMsg?.id) {
+              const docMetadata = {
+                type: 'document',
+                filename: mediaFilename,
+                mimetype: mimeDoc,
+                ...(docBase64ForDash ? { doc_base64: docBase64ForDash } : {}),
+              };
               await query(
                 `UPDATE messages SET metadata = $1 WHERE id = $2`,
-                [JSON.stringify({ type: 'document', filename: mediaFilename, mimetype: mimeDoc }), docMsg.id]
+                [JSON.stringify(docMetadata), docMsg.id]
               );
+              // Emitir atualização para o dashboard atualizar em tempo real
+              emitToSession(sid, EVENTS.MENSAGEM_ATUALIZADA, {
+                session_id: sid,
+                message_id: docMsg.id,
+                metadata: { type: 'document', filename: mediaFilename, mimetype: mimeDoc },
+              });
             }
 
             // Se o tipo não é suportado (retornado pelo vision.js)

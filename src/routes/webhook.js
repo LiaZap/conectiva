@@ -228,7 +228,67 @@ async function processMessage(canal, body, replyFn) {
     if (session.cpf_cnpj) mkParams.doc = session.cpf_cnpj;
     if (session.cd_cliente_mk) mkParams.cd_cliente = session.cd_cliente_mk;
 
-    mkResult = await n8nExecute({ action: acaoMK, params: mkParams, session_id: sid });
+    // ── Cadeia de dependências: algumas ações precisam de chamadas intermediárias ──
+
+    // SEGUNDA_VIA precisa de cd_fatura (vem de FATURAS_PENDENTES)
+    if (acaoMK === 'SEGUNDA_VIA' && !mkParams.cd_fatura) {
+      console.log('[webhook] SEGUNDA_VIA: buscando faturas para obter cd_fatura...');
+      const faturasResult = await n8nExecute({ action: 'FATURAS_PENDENTES', params: mkParams, session_id: sid });
+      if (faturasResult.success && faturasResult.data) {
+        const faturas = faturasResult.data.FaturasPendentes || faturasResult.data.faturas || faturasResult.data.Faturas || [];
+        const listaFaturas = Array.isArray(faturas) ? faturas : [faturas];
+        // Pegar a fatura mais recente (primeira da lista)
+        if (listaFaturas.length > 0) {
+          const fatura = listaFaturas[0];
+          mkParams.cd_fatura = fatura.CodigoFatura || fatura.cd_fatura || fatura.codigo_fatura || fatura.CodigoDocumento;
+          console.log(`[webhook] SEGUNDA_VIA: cd_fatura obtido = ${mkParams.cd_fatura}`);
+        } else {
+          // Sem faturas pendentes — informar ao cliente
+          console.log('[webhook] SEGUNDA_VIA: nenhuma fatura pendente encontrada');
+          mkResult = { success: true, data: { semFaturas: true, ...faturasResult.data }, tempo_ms: faturasResult.tempo_ms };
+        }
+      } else {
+        mkResult = faturasResult; // Passa erro adiante
+      }
+    }
+
+    // AUTO_DESBLOQUEIO precisa de cd_conexao (vem de CONEXOES_CLIENTE)
+    if (acaoMK === 'AUTO_DESBLOQUEIO' && !mkParams.cd_conexao) {
+      console.log('[webhook] DESBLOQUEIO: buscando conexões para obter cd_conexao...');
+      const conexResult = await n8nExecute({ action: 'CONEXOES_CLIENTE', params: mkParams, session_id: sid });
+      if (conexResult.success && conexResult.data) {
+        const conexoes = conexResult.data.Conexoes || conexResult.data.conexoes || [];
+        const listaConexoes = Array.isArray(conexoes) ? conexoes : [conexoes];
+        if (listaConexoes.length > 0) {
+          const conexao = listaConexoes[0];
+          mkParams.cd_conexao = conexao.CodigoConexao || conexao.cd_conexao || conexao.codigo_conexao;
+          console.log(`[webhook] DESBLOQUEIO: cd_conexao obtido = ${mkParams.cd_conexao}`);
+        } else {
+          console.log('[webhook] DESBLOQUEIO: nenhuma conexão encontrada');
+          mkResult = { success: false, data: null, tempo_ms: conexResult.tempo_ms, error: 'Nenhuma conexão encontrada' };
+        }
+      } else {
+        mkResult = conexResult;
+      }
+    }
+
+    // CRIAR_OS precisa de cd_conexao (para saber qual conexão)
+    if (acaoMK === 'CRIAR_OS' && !mkParams.cd_conexao) {
+      console.log('[webhook] CRIAR_OS: buscando conexões para vincular O.S...');
+      const conexResult = await n8nExecute({ action: 'CONEXOES_CLIENTE', params: mkParams, session_id: sid });
+      if (conexResult.success && conexResult.data) {
+        const conexoes = conexResult.data.Conexoes || conexResult.data.conexoes || [];
+        const listaConexoes = Array.isArray(conexoes) ? conexoes : [conexoes];
+        if (listaConexoes.length > 0) {
+          mkParams.cd_conexao = listaConexoes[0].CodigoConexao || listaConexoes[0].cd_conexao;
+        }
+      }
+    }
+
+    // ── Executar a ação principal (se não foi resolvida na etapa de dependência) ──
+    if (!mkResult) {
+      mkResult = await n8nExecute({ action: acaoMK, params: mkParams, session_id: sid });
+    }
     tempo_mk_ms = mkResult.tempo_ms;
 
     emit(EVENTS.MK_RETORNOU, { session_id: sid, success: mkResult.success, acao: acaoMK });
@@ -355,13 +415,15 @@ async function processMessage(canal, body, replyFn) {
   } else if (cadastroAtualizado?.success) {
     // AC4: Confirmação de solicitação de atualização cadastral
     const protocolo = cadastroAtualizado.data?.protocolo || cadastroAtualizado.data?.CodigoLead || '';
-    resposta = `Registrei sua solicitação de atualização cadastral com sucesso.${protocolo ? `\nProtocolo: ${protocolo}` : ''}\nNossa equipe irá processar a alteração e, se necessário, entrará em contato para confirmação.\nDeseja algo mais?`;
+    resposta = `Pronto! Registrei sua solicitação de atualização cadastral ✅${protocolo ? `\n📋 *Protocolo:* ${protocolo}` : ''}\nNossa equipe vai processar a alteração e se precisar, entra em contato pra confirmar.\nPosso te ajudar em mais alguma coisa?`;
   } else if (acaoMK && mkResult?.success) {
     resposta = await formatResponse({ intencao, mkData: mkResult.data, session, historico });
   } else if (acaoMK && !mkResult?.success) {
-    resposta = 'Desculpe, tive um problema ao consultar seus dados. Vou transferir para um atendente que poderá ajudá-lo.';
+    resposta = 'Poxa, deu um probleminha pra consultar seus dados no sistema 😔 Vou te passar pra um colega da equipe resolver isso pra você! Só um minutinho 🙏';
+    // Forçar escalonamento quando MK falha
+    classification.intencao = 'HUMANO';
   } else {
-    resposta = respostaSugerida || 'Como posso ajudá-lo?';
+    resposta = respostaSugerida || 'Me conta, como posso te ajudar? 😊';
   }
 
   // 10. Enviar resposta

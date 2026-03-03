@@ -436,23 +436,10 @@ async function processMessage(canal, body, replyFn) {
   emit(EVENTS.RESPOSTA_ENVIADA, { session_id: sid, intencao, resposta, tempo_total_ms });
   emitToSession(sid, EVENTS.RESPOSTA_ENVIADA, { resposta, direcao: 'saida' });
 
-  // 12.5. CSAT: Se a IA resolveu com sucesso (ação MK concluída), enviar pesquisa de satisfação
-  const acaoResolvida = acaoMK && mkResult?.success && intencao !== 'HUMANO';
-  if (acaoResolvida) {
-    // Enviar pesquisa após 3 segundos (para o cliente ler a resposta antes)
-    setTimeout(async () => {
-      try {
-        await replyFn(telefone, CSAT_MESSAGE);
-        await logger.saveMessage({ session_id: sid, direcao: 'saida', conteudo: CSAT_MESSAGE, canal: body._buffered ? (body.canal || canal) : canal });
-        await sessionService.startCSAT(sid);
-        // Gerar resumo IA em background
-        sessionService.generateAndSaveSummary(sid, session).catch(() => {});
-        console.log(`[webhook] CSAT enviada para sessão ${sid}`);
-      } catch (err) {
-        console.error(`[webhook] Erro ao enviar CSAT para ${sid}:`, err.message);
-      }
-    }, 3000);
-  }
+  // 12.5. CSAT: NÃO enviar aqui — o cliente pode ter mais dúvidas na mesma sessão.
+  // A pesquisa de satisfação é enviada APENAS quando:
+  // - A sessão EXPIRA por inatividade (30min sem mensagem) → via expireStale() em session.js
+  // - O atendente fecha manualmente pelo dashboard → via POST /api/sessions/:id/close
 
   // 13. Escalonamento se HUMANO
   if (intencao === 'HUMANO') {

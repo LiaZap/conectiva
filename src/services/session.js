@@ -2,6 +2,8 @@ import { query } from '../config/database.js';
 import { config } from '../config/env.js';
 import { emit, EVENTS } from '../websocket/events.js';
 import { generateSummary } from './ai.js';
+import { sendText } from './whatsapp.js';
+import * as logger from './logger.js';
 
 /**
  * Busca sessão reutilizável por telefone/canal, ou cria uma nova.
@@ -104,12 +106,28 @@ export async function getHistory(sessionId, limit = 20) {
   return rows;
 }
 
+// Mensagem de CSAT enviada quando a sessão expira
+const CSAT_MESSAGE = `Oi! Aqui é a Ana, da *Conectiva* 😊
+
+Vi que nossa conversa ficou parada. Espero ter conseguido te ajudar!
+
+Antes de encerrar, *como você avalia o atendimento de hoje?*
+
+Responde com uma nota de *1 a 5*:
+1️⃣ Péssimo
+2️⃣ Ruim
+3️⃣ Regular
+4️⃣ Bom
+5️⃣ Excelente
+
+Sua opinião ajuda a gente a melhorar! 💙`;
+
 /**
  * Expira sessões que passaram do TTL.
- * Também gera resumo IA e envia pesquisa de satisfação para sessões expiradas.
+ * Envia pesquisa CSAT por WhatsApp e gera resumo IA.
  */
 export async function expireStale() {
-  // Buscar sessões para expirar (com dados para o resumo)
+  // Buscar sessões para expirar (com dados para o resumo/CSAT)
   const { rows } = await query(
     `UPDATE sessions SET status = 'expirada', updated_at = NOW()
      WHERE status = 'ativa' AND expires_at <= NOW()
@@ -120,10 +138,23 @@ export async function expireStale() {
     console.log(`[session] ${rows.length} sessões expiradas`);
     for (const row of rows) {
       emit(EVENTS.SESSAO_ENCERRADA, { session_id: row.id, motivo: 'expirada' });
-      // Gerar resumo IA em background (não bloqueia expiração)
+
+      // Gerar resumo IA em background
       generateAndSaveSummary(row.id, row).catch((err) =>
         console.error(`[session] Erro ao gerar resumo para ${row.id}:`, err.message)
       );
+
+      // Enviar CSAT por WhatsApp (só se teve interação real — ≥2 mensagens)
+      if (row.canal === 'whatsapp' && row.telefone && row.total_mensagens >= 2) {
+        try {
+          await sendText(row.telefone, CSAT_MESSAGE);
+          await logger.saveMessage({ session_id: row.id, direcao: 'saida', conteudo: CSAT_MESSAGE, canal: 'whatsapp' });
+          await startCSAT(row.id);
+          console.log(`[session] CSAT enviada ao expirar sessão ${row.id}`);
+        } catch (err) {
+          console.error(`[session] Erro ao enviar CSAT para ${row.id}:`, err.message);
+        }
+      }
     }
   }
 

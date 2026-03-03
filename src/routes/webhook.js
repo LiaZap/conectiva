@@ -437,7 +437,13 @@ async function processMessage(canal, body, replyFn) {
       console.log(`[webhook] CRIAR_PESSOA: criando cadastro para ${mkParams.doc || session.cpf_cnpj}...`);
       mkParams.doc = mkParams.doc || session.cpf_cnpj;
       mkParams.nome = mkParams.nome || session.nome_cliente || pushName || '';
-      mkParams.fone = mkParams.fone || telefone;
+      // Sempre usar o telefone real do WhatsApp (IA pode enviar texto genérico)
+      // Remover código de país 55 se presente (MK espera formato nacional)
+      let foneReal = telefone.replace(/\D/g, '');
+      if (foneReal.startsWith('55') && foneReal.length >= 12) {
+        foneReal = foneReal.substring(2);
+      }
+      mkParams.fone = foneReal;
     }
 
     // NOVA_LEAD — preparar dados para não-clientes (não precisa cd_cliente)

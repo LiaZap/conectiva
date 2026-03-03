@@ -504,7 +504,7 @@ async function processMessage(canal, body, replyFn) {
       }
     }
 
-    // ── CONSULTAR_COBERTURA: se já foi feito nesta sessão, reusar resultado anterior ──
+    // ── CONSULTAR_COBERTURA: se já foi feito nesta sessão, pular e sinalizar ──
     if (acaoMK === 'CONSULTAR_COBERTURA' && !mkResult) {
       try {
         const { rows } = await query(
@@ -515,8 +515,22 @@ async function processMessage(canal, body, replyFn) {
         );
         if (rows.length > 0 && rows[0].dados_saida) {
           const cached = rows[0].dados_saida;
-          console.log(`[webhook] CONSULTAR_COBERTURA já feito nesta sessão — reusando (tem_cobertura: ${cached.data?.tem_cobertura})`);
-          mkResult = { success: true, data: cached.data || cached, tempo_ms: 0, endpoint: 'cache' };
+          const temCobertura = cached.data?.tem_cobertura ?? cached.tem_cobertura;
+          console.log(`[webhook] CONSULTAR_COBERTURA já feito — cobertura: ${temCobertura} (pulando)`);
+
+          // Sinalizar que cobertura já foi confirmada — IA deve prosseguir com o fluxo
+          mkResult = {
+            success: true,
+            data: {
+              _coberturaJaConfirmada: true,
+              tem_cobertura: temCobertura,
+              cidade_encontrada: cached.data?.cidade_encontrada || cached.cidade_encontrada,
+            },
+            tempo_ms: 0,
+            endpoint: 'cache',
+          };
+          // Trocar ação para null — não precisa re-executar
+          acaoMK = null;
         }
       } catch (err) {
         console.error('[webhook] Erro ao buscar cobertura em cache:', err.message);

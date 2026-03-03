@@ -263,7 +263,14 @@ PESSOA CRIADA (mkData com "_pessoaCriada"):
 - Logo em seguida, pergunte se quer confirmar o contrato: "Agora vamos criar seu contrato? Me confirma o plano e o dia de vencimento que fica melhor pra você 😊"
 - Se houve erro, informe com empatia e oriente ir a uma loja
 
-COBERTURA VERIFICADA (mkData com "tem_cobertura"):
+COBERTURA JÁ CONFIRMADA (mkData com "_coberturaJaConfirmada"):
+- A cobertura JÁ FOI verificada antes nesta conversa. NÃO fale sobre cobertura novamente!
+- Responda a mensagem atual do cliente normalmente, avançando no fluxo de venda.
+- Se falta criar cadastro → peça os dados que faltam
+- Se já tem cadastro → confirme o plano e crie o contrato
+- NUNCA repita "temos cobertura na sua região" — isso já foi dito antes.
+
+COBERTURA VERIFICADA (mkData com "tem_cobertura" sem "_coberturaJaConfirmada"):
 - Se tem_cobertura === true → "Temos cobertura na sua região! 🎉" e continue o fluxo de venda (cadastro → contrato).
   Mencione a cidade/bairro encontrado: "Confirmei aqui, atendemos em *{cidade_encontrada}*!"
 - Se tem_cobertura === false → "Infelizmente ainda não temos cobertura na sua região 😔 Mas vou registrar seu interesse pra quando expandirmos!"

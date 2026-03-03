@@ -117,7 +117,7 @@ async function processMessage(canal, body, replyFn) {
 
   console.log('[webhook] Payload recebido:', { canal, from, message: message?.substring(0, 80), pushName, fromMe });
 
-  // Ignorar mensagens enviadas pelo próprio bot
+  // Ignorar mensagens enviadas pela própria IA
   if (fromMe) {
     console.log('[webhook] Ignorando mensagem fromMe');
     return;
@@ -163,7 +163,7 @@ async function processMessage(canal, body, replyFn) {
   // 4.5. Se humano está atendendo, NÃO processar com IA
   // A mensagem já foi gravada e emitida — o atendente humano vê no dashboard
   if (session.status === 'aguardando_humano') {
-    console.log(`[webhook] Sessão ${sid} em atendimento humano — bot desativado`);
+    console.log(`[webhook] Sessão ${sid} em atendimento humano — IA desativada`);
     return;
   }
 
@@ -542,7 +542,7 @@ router.post('/webhook/whatsapp', async (req, res) => {
     // Normalizar para extrair dados (incluindo campos de mídia para áudio)
     const { from, message, pushName, fromMe, messageType, isIgnored, mediaUrl, mediaMimetype, mediaFilename, mediaBase64, mediaKey, fileSHA256, fileLength, messageId } = normalizeChannel(req.body, 'whatsapp');
 
-    // Ignorar mensagens do próprio bot
+    // Ignorar mensagens enviadas pela própria IA
     if (fromMe) {
       return res.json({ success: true });
     }

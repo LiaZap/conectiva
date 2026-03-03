@@ -116,14 +116,14 @@ router.post('/api/sessions/:id/takeover', async (req, res) => {
     // Emitir atualização de sessão para todos os clientes
     emit(EVENTS.SESSAO_ATUALIZADA, { session_id: id, status: 'aguardando_humano', atendente });
 
-    res.json({ success: true, data: updated, message: 'Conversa assumida com sucesso. O bot não responderá mais nesta sessão.' });
+    res.json({ success: true, data: updated, message: 'Conversa assumida com sucesso. A IA não responderá mais nesta sessão.' });
   } catch (err) {
     console.error('[api] POST /sessions/:id/takeover erro:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// POST /api/sessions/:id/release - Devolver sessão ao bot
+// POST /api/sessions/:id/release - Devolver sessão à IA
 router.post('/api/sessions/:id/release', async (req, res) => {
   try {
     const { id } = req.params;
@@ -138,7 +138,7 @@ router.post('/api/sessions/:id/release', async (req, res) => {
 
     emit(EVENTS.SESSAO_ATUALIZADA, { session_id: id, status: 'ativa' });
 
-    res.json({ success: true, data: updated, message: 'Sessão devolvida ao bot.' });
+    res.json({ success: true, data: updated, message: 'Sessão devolvida à IA.' });
   } catch (err) {
     console.error('[api] POST /sessions/:id/release erro:', err.message);
     res.status(500).json({ success: false, error: err.message });

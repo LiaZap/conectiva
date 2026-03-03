@@ -135,7 +135,7 @@ async function runMigrations() {
 
 // Iniciar
 server.listen(config.port, async () => {
-  console.log(`\n  🤖 Conectiva Bot rodando na porta ${config.port}`);
+  console.log(`\n  🤖 Conectiva IA rodando na porta ${config.port}`);
   console.log(`  📡 WebSocket pronto`);
   console.log(`  🔒 Segurança: helmet + rate-limit + sanitização`);
   console.log(`  🌐 Ambiente: ${config.nodeEnv}\n`);

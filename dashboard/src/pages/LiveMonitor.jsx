@@ -85,7 +85,7 @@ export default function LiveMonitor() {
         direcao: 'saida',
         conteudo: data.resposta,
         created_at: data.timestamp,
-        remetente: data.remetente || 'bot',
+        remetente: data.remetente || 'ia',
       }]);
     });
     // Atualizar metadata de mensagem (ex: imagem/documento carregados)
@@ -320,7 +320,7 @@ export default function LiveMonitor() {
                   </button>
                   {isHumanAttending ? (
                     <button onClick={handleRelease} className="text-xs px-3 py-1.5 rounded-lg bg-conectiva-600 hover:bg-conectiva-500 text-white transition-colors flex items-center gap-1">
-                      <Bot size={12} /> Devolver ao Bot
+                      <Bot size={12} /> Devolver à IA
                     </button>
                   ) : (
                     <button onClick={handleTakeover} className="text-xs px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white transition-colors flex items-center gap-1">
@@ -339,7 +339,7 @@ export default function LiveMonitor() {
               {isHumanAttending && (
                 <div className="bg-amber-600/10 border-b border-amber-600/30 px-4 py-2 flex items-center gap-2">
                   <UserCheck size={14} className="text-amber-400" />
-                  <span className="text-xs text-amber-300">Bot desativado — Você está atendendo. Digite sua mensagem abaixo para responder ao cliente.</span>
+                  <span className="text-xs text-amber-300">IA desativada — Você está atendendo. Digite sua mensagem abaixo para responder ao cliente.</span>
                 </div>
               )}
               {/* Chat messages */}
@@ -355,7 +355,7 @@ export default function LiveMonitor() {
                     value={replyText}
                     onChange={(e) => setReplyText(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder={isHumanAttending ? 'Digite sua resposta para o cliente...' : 'Enviar mensagem como atendente (o bot será pausado)...'}
+                    placeholder={isHumanAttending ? 'Digite sua resposta para o cliente...' : 'Enviar mensagem como atendente (a IA será pausada)...'}
                     rows={1}
                     className={`flex-1 resize-none rounded-lg px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 outline-none transition-colors ${
                       isHumanAttending
@@ -383,7 +383,7 @@ export default function LiveMonitor() {
                 </div>
                 {!isHumanAttending && replyText.trim() && (
                   <p className="text-[10px] text-amber-400/70 mt-1.5 ml-1">
-                    ⚠️ Ao enviar, a sessão será assumida automaticamente e o bot será pausado.
+                    ⚠️ Ao enviar, a sessão será assumida automaticamente e a IA será pausada.
                   </p>
                 )}
               </div>

@@ -29,7 +29,7 @@ function parseAnalysis(text) {
 
 /**
  * Props:
- *   direcao | direction  — 'entrada' (client) or 'saida' (bot)
+ *   direcao | direction  — 'entrada' (client) or 'saida' (IA)
  *   conteudo | message   — text content
  *   created_at | timestamp — ISO string
  *   id                   — message UUID (para buscar áudio)

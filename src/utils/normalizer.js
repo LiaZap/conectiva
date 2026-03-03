@@ -1,6 +1,6 @@
 /**
  * Tipos de mensagem que são mídia (não-texto).
- * O bot precisa tratar cada um de forma diferente.
+ * A IA precisa tratar cada um de forma diferente.
  */
 const MEDIA_TYPES = new Set([
   'image', 'imageMessage',

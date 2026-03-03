@@ -6,10 +6,11 @@ import * as logger from '../services/logger.js';
 import { query } from '../config/database.js';
 
 import { execute as n8nExecute } from '../services/n8n.js';
-import { sendText, sendDocument, downloadAudio } from '../services/whatsapp.js';
+import { sendText, sendDocument, downloadMedia } from '../services/whatsapp.js';
 import { analisarNegociacao } from '../services/negotiation.js';
 import { classify, formatResponse, generateDiagnostic } from '../services/ai.js';
 import { transcribeAudio, transcribeAudioBase64, transcribeAudioBuffer } from '../services/audio.js';
+import { analyzeImage, analyzeDocument } from '../services/vision.js';
 import { emit, emitToSession, EVENTS } from '../websocket/events.js';
 
 const router = Router();
@@ -403,10 +404,7 @@ async function processMessage(canal, body, replyFn) {
 
 // ── Respostas para tipos de mídia ─────────────────────────
 const MEDIA_RESPONSES = {
-  audio: '🎤 Recebi seu áudio! No momento ainda não consigo ouvir áudios, mas estou aqui para te ajudar. Poderia digitar sua solicitação, por favor? 😊',
-  image: '📷 Recebi sua imagem! Infelizmente ainda não consigo analisar imagens, mas posso te ajudar por texto. O que você precisa? 😊',
   video: '🎥 Recebi seu vídeo! No momento não consigo assistir vídeos, mas ficarei feliz em te ajudar por texto. Qual a sua solicitação? 😊',
-  document: '📄 Recebi seu documento! Ainda não consigo ler documentos, mas posso te ajudar por texto. Me conta o que você precisa? 😊',
   sticker: '', // Figurinhas são ignoradas silenciosamente
 };
 
@@ -457,7 +455,7 @@ router.post('/webhook/whatsapp', async (req, res) => {
           // 1) Download via Uazapi /message/download (método principal — usa messageId)
           if (messageId) {
             console.log(`[webhook] Tentando download via Uazapi /message/download... (messageId: ${messageId})`);
-            const dl = await downloadAudio({ messageId });
+            const dl = await downloadMedia({ messageId });
             if (dl.success && dl.buffer && dl.buffer.length > 100) {
               audioBase64ForDashboard = dl.buffer.toString('base64');
               result = await transcribeAudioBuffer(dl.buffer, mediaMimetype, mediaFilename);
@@ -539,7 +537,225 @@ router.post('/webhook/whatsapp', async (req, res) => {
         return res.json({ success: true });
       }
 
-      // ── Outros tipos de mídia (imagem, vídeo, documento, sticker) ──
+      // ── IMAGEM: analisar com GPT-4o Vision ──
+      if (messageType === 'image') {
+        console.log(`[webhook] Imagem recebida de ${telefone}`, { mediaUrl: mediaUrl?.substring(0, 150), mediaMimetype, messageId });
+
+        try {
+          const session = await sessionService.findOrCreate({ telefone, canal: 'whatsapp', pushName });
+          const sid = session.id;
+
+          // Salvar mensagem de entrada (imagem)
+          const imgMsg = await logger.saveMessage({ session_id: sid, direcao: 'entrada', conteudo: '📷 [Imagem]', canal: 'whatsapp' });
+          emit(EVENTS.NOVA_MENSAGEM, { session_id: sid, message: '📷 [Imagem]', telefone, canal: 'whatsapp' });
+          emitToSession(sid, EVENTS.NOVA_MENSAGEM, { session_id: sid, message: '📷 [Imagem]', direcao: 'entrada' });
+
+          emit(EVENTS.ANALISANDO_MIDIA, { session_id: sid, telefone, tipo: 'image' });
+          emitToSession(sid, EVENTS.ANALISANDO_MIDIA, { telefone, tipo: 'image' });
+
+          let imageBase64 = null;
+          let result = null;
+
+          // 1) Download via Uazapi /message/download
+          if (messageId) {
+            console.log(`[webhook] Baixando imagem via Uazapi (messageId: ${messageId})`);
+            const dl = await downloadMedia({ messageId });
+            if (dl.success && dl.buffer && dl.buffer.length > 100) {
+              imageBase64 = dl.buffer.toString('base64');
+            } else {
+              console.log(`[webhook] Download imagem falhou: ${dl.error}`);
+            }
+          }
+
+          // 2) Fallback: base64 direto do payload
+          if (!imageBase64 && mediaBase64) {
+            imageBase64 = mediaBase64;
+          }
+
+          // Analisar com GPT-4o Vision
+          if (imageBase64) {
+            result = await analyzeImage(imageBase64, mediaMimetype, message);
+
+            // Salvar thumbnail no metadata (até 500KB para não sobrecarregar o banco)
+            const thumbBase64 = imageBase64.length <= 500 * 1024 ? imageBase64 : null;
+            if (imgMsg?.id) {
+              const metadataObj = {
+                type: 'image',
+                mimetype: (mediaMimetype || 'image/jpeg').split(';')[0].trim(),
+                ...(thumbBase64 ? { image_base64: thumbBase64 } : {}),
+              };
+              await query(
+                `UPDATE messages SET metadata = $1 WHERE id = $2`,
+                [JSON.stringify(metadataObj), imgMsg.id]
+              );
+            }
+
+            // Logar ação
+            await logger.saveAction({
+              session_id: sid, interaction_id: null,
+              acao: 'ANALISE_IMAGEM',
+              descricao: result.success
+                ? `Imagem analisada: "${result.text?.substring(0, 100)}"`
+                : `Falha na análise: ${result.error}`,
+              status: result.success ? 'sucesso' : 'erro',
+              dados_entrada: { mediaMimetype, hasCaption: !!message },
+              dados_saida: result.success ? { texto: result.text?.substring(0, 500) } : { error: result.error },
+              tempo_ms: result.tempo_ms || 0,
+            });
+          }
+
+          if (result?.success && result.text) {
+            // Alimentar análise no pipeline normal
+            const analysisText = message?.trim()
+              ? `${message}\n\n[Análise da imagem: ${result.text}]`
+              : `[Análise da imagem: ${result.text}]`;
+            console.log(`[webhook] Imagem analisada, processando: "${analysisText.substring(0, 100)}"`);
+            bufferMessage(telefone, analysisText, 'whatsapp', pushName, sendText);
+          } else {
+            // Fallback: não conseguiu analisar
+            console.log(`[webhook] Não foi possível analisar imagem de ${telefone}`);
+            const fallbackMsg = '📷 Recebi sua imagem, mas não consegui analisá-la no momento. Poderia descrever o que você precisa por texto? 😊';
+            await sendText(telefone, fallbackMsg);
+            await logger.saveMessage({ session_id: sid, direcao: 'saida', conteudo: fallbackMsg, canal: 'whatsapp' });
+            emit(EVENTS.RESPOSTA_ENVIADA, { session_id: sid, resposta: fallbackMsg });
+            emitToSession(sid, EVENTS.RESPOSTA_ENVIADA, { session_id: sid, resposta: fallbackMsg, direcao: 'saida' });
+
+            // Se a imagem tinha caption, processar o texto
+            if (message?.trim()) {
+              bufferMessage(telefone, message, 'whatsapp', pushName, sendText);
+            }
+          }
+        } catch (imgErr) {
+          console.error('[webhook] Erro ao processar imagem:', imgErr.message, imgErr.stack);
+          await sendText(telefone, '📷 Recebi sua imagem, mas tive um problema ao processá-la. Poderia descrever por texto? 😊').catch(() => {});
+        }
+
+        return res.json({ success: true });
+      }
+
+      // ── DOCUMENTO: analisar com GPT-4o Vision ──
+      if (messageType === 'document') {
+        console.log(`[webhook] Documento recebido de ${telefone}`, { mediaUrl: mediaUrl?.substring(0, 150), mediaMimetype, mediaFilename, messageId });
+
+        try {
+          const session = await sessionService.findOrCreate({ telefone, canal: 'whatsapp', pushName });
+          const sid = session.id;
+
+          // Salvar mensagem de entrada (documento)
+          const docDisplayName = mediaFilename || 'documento';
+          const docMsg = await logger.saveMessage({ session_id: sid, direcao: 'entrada', conteudo: `📄 [Documento: ${docDisplayName}]`, canal: 'whatsapp' });
+          emit(EVENTS.NOVA_MENSAGEM, { session_id: sid, message: `📄 [Documento: ${docDisplayName}]`, telefone, canal: 'whatsapp' });
+          emitToSession(sid, EVENTS.NOVA_MENSAGEM, { session_id: sid, message: `📄 [Documento: ${docDisplayName}]`, direcao: 'entrada' });
+
+          emit(EVENTS.ANALISANDO_MIDIA, { session_id: sid, telefone, tipo: 'document' });
+          emitToSession(sid, EVENTS.ANALISANDO_MIDIA, { telefone, tipo: 'document' });
+
+          let docBase64 = null;
+          let result = null;
+
+          // 1) Download via Uazapi /message/download
+          if (messageId) {
+            console.log(`[webhook] Baixando documento via Uazapi (messageId: ${messageId})`);
+            const dl = await downloadMedia({ messageId });
+            if (dl.success && dl.buffer && dl.buffer.length > 100) {
+              docBase64 = dl.buffer.toString('base64');
+            } else {
+              console.log(`[webhook] Download documento falhou: ${dl.error}`);
+            }
+          }
+
+          // 2) Fallback: base64 direto do payload
+          if (!docBase64 && mediaBase64) {
+            docBase64 = mediaBase64;
+          }
+
+          // Verificar tipo antes de analisar
+          const mimeDoc = (mediaMimetype || '').split(';')[0].trim().toLowerCase();
+          const extDoc = mediaFilename?.split('.').pop()?.toLowerCase() || '';
+          const unsupportedExts = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'zip', 'rar'];
+
+          if (unsupportedExts.includes(extDoc)) {
+            const unsupportedMsg = `📄 Recebi seu arquivo *${docDisplayName}*, mas infelizmente não consigo ler arquivos *.${extDoc}*. Poderia enviar como *PDF*, por favor? 😊`;
+            await sendText(telefone, unsupportedMsg);
+            await logger.saveMessage({ session_id: sid, direcao: 'saida', conteudo: unsupportedMsg, canal: 'whatsapp' });
+
+            if (docMsg?.id) {
+              await query(
+                `UPDATE messages SET metadata = $1 WHERE id = $2`,
+                [JSON.stringify({ type: 'document', filename: mediaFilename, mimetype: mimeDoc }), docMsg.id]
+              );
+            }
+
+            emit(EVENTS.RESPOSTA_ENVIADA, { session_id: sid, resposta: unsupportedMsg });
+            emitToSession(sid, EVENTS.RESPOSTA_ENVIADA, { session_id: sid, resposta: unsupportedMsg, direcao: 'saida' });
+            return res.json({ success: true });
+          }
+
+          // Analisar com GPT-4o
+          if (docBase64) {
+            result = await analyzeDocument(docBase64, mediaMimetype, mediaFilename, message);
+
+            // Salvar metadata do documento (sem base64 — documentos são grandes)
+            if (docMsg?.id) {
+              await query(
+                `UPDATE messages SET metadata = $1 WHERE id = $2`,
+                [JSON.stringify({ type: 'document', filename: mediaFilename, mimetype: mimeDoc }), docMsg.id]
+              );
+            }
+
+            // Se o tipo não é suportado (retornado pelo vision.js)
+            if (!result.success && result.unsupported) {
+              const unsupportedMsg = `📄 ${result.error}`;
+              await sendText(telefone, unsupportedMsg);
+              await logger.saveMessage({ session_id: sid, direcao: 'saida', conteudo: unsupportedMsg, canal: 'whatsapp' });
+              emit(EVENTS.RESPOSTA_ENVIADA, { session_id: sid, resposta: unsupportedMsg });
+              emitToSession(sid, EVENTS.RESPOSTA_ENVIADA, { session_id: sid, resposta: unsupportedMsg, direcao: 'saida' });
+              return res.json({ success: true });
+            }
+
+            // Logar ação
+            await logger.saveAction({
+              session_id: sid, interaction_id: null,
+              acao: 'ANALISE_DOCUMENTO',
+              descricao: result.success
+                ? `Documento analisado: "${result.text?.substring(0, 100)}"`
+                : `Falha na análise: ${result.error}`,
+              status: result.success ? 'sucesso' : 'erro',
+              dados_entrada: { mediaMimetype, mediaFilename, hasCaption: !!message },
+              dados_saida: result.success ? { texto: result.text?.substring(0, 500) } : { error: result.error },
+              tempo_ms: result.tempo_ms || 0,
+            });
+          }
+
+          if (result?.success && result.text) {
+            // Alimentar análise no pipeline normal
+            const analysisText = message?.trim()
+              ? `${message}\n\n[Análise do documento: ${result.text}]`
+              : `[Análise do documento (${docDisplayName}): ${result.text}]`;
+            console.log(`[webhook] Documento analisado, processando: "${analysisText.substring(0, 100)}"`);
+            bufferMessage(telefone, analysisText, 'whatsapp', pushName, sendText);
+          } else {
+            // Fallback
+            console.log(`[webhook] Não foi possível analisar documento de ${telefone}`);
+            const fallbackMsg = '📄 Recebi seu documento, mas não consegui analisá-lo no momento. Poderia descrever o que você precisa por texto? 😊';
+            await sendText(telefone, fallbackMsg);
+            await logger.saveMessage({ session_id: sid, direcao: 'saida', conteudo: fallbackMsg, canal: 'whatsapp' });
+            emit(EVENTS.RESPOSTA_ENVIADA, { session_id: sid, resposta: fallbackMsg });
+            emitToSession(sid, EVENTS.RESPOSTA_ENVIADA, { session_id: sid, resposta: fallbackMsg, direcao: 'saida' });
+
+            if (message?.trim()) {
+              bufferMessage(telefone, message, 'whatsapp', pushName, sendText);
+            }
+          }
+        } catch (docErr) {
+          console.error('[webhook] Erro ao processar documento:', docErr.message, docErr.stack);
+          await sendText(telefone, '📄 Recebi seu documento, mas tive um problema ao processá-lo. Poderia descrever por texto? 😊').catch(() => {});
+        }
+
+        return res.json({ success: true });
+      }
+
+      // ── Outros tipos de mídia (vídeo, sticker) ──
       const mediaResponse = MEDIA_RESPONSES[messageType];
 
       if (mediaResponse) {

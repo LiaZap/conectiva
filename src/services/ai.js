@@ -84,6 +84,22 @@ Regras para SUPORTE:
 - Use acaoMK = "CONEXOES_CLIENTE" para obter dados da conexão
 - O sistema gerará diagnóstico técnico automaticamente
 
+MENSAGENS COM ANÁLISE DE MÍDIA:
+Quando o cliente envia imagem ou documento, o sistema analisa automaticamente e adiciona o contexto na mensagem no formato:
+- "[Análise da imagem: ...]" — análise de foto/print feita pelo sistema de visão
+- "[Análise do documento: ...]" — análise de PDF/documento feita pelo sistema de visão
+- A mensagem pode ter caption (texto do cliente) + análise combinados
+
+Regras para mídia analisada:
+- Se a análise indica *comprovante de pagamento* → classifique como FATURAS (cliente quer confirmar pagamento)
+- Se a análise indica *teste de velocidade (speedtest)* → classifique como SUPORTE (problema de velocidade)
+- Se a análise indica *foto de equipamento/roteador/ONU/modem* → classifique como SUPORTE (problema técnico)
+- Se a análise indica *boleto/fatura* → classifique como FATURAS ou SEGUNDA_VIA
+- Se a análise indica *print de erro* → classifique como SUPORTE
+- Se a análise indica *contrato* → classifique como CONTRATO
+- Incorpore as informações da análise na sua respostaSugerida de forma natural
+- Exemplo: se o speedtest mostra 150 Mbps mas o plano é 600 Mbps, mencione que a velocidade está abaixo do esperado
+
 Se confiança < 0.7, classifique como HUMANO.
 Se o cliente não forneceu CPF e a ação precisa, marque precisaCPF=true, acaoMK=null, e peça o CPF na resposta.`;
 

@@ -1,6 +1,6 @@
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Bot, User, Mic } from 'lucide-react';
+import { Bot, User, Mic, Image, FileText } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
@@ -21,6 +21,8 @@ export default function ChatBubble(props) {
 
   const isClient = direcao === 'entrada';
   const isAudio = metadata?.type === 'audio' && metadata?.audio_base64;
+  const isImage = metadata?.type === 'image';
+  const isDocument = metadata?.type === 'document';
   const time = ts ? format(new Date(ts), 'HH:mm', { locale: ptBR }) : '';
 
   return (
@@ -50,6 +52,52 @@ export default function ChatBubble(props) {
               className="w-full max-w-[280px] h-8"
               src={`data:${metadata.mimetype || 'audio/ogg'};base64,${metadata.audio_base64}`}
             />
+          </div>
+        ) : isImage ? (
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-2 text-xs opacity-70">
+              <Image size={12} />
+              <span>Imagem do cliente</span>
+            </div>
+            {metadata.image_base64 ? (
+              <a
+                href={`data:${metadata.mimetype || 'image/jpeg'};base64,${metadata.image_base64}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Clique para ver em tamanho real"
+              >
+                <img
+                  src={`data:${metadata.mimetype || 'image/jpeg'};base64,${metadata.image_base64}`}
+                  alt="Imagem enviada pelo cliente"
+                  className="max-w-[260px] max-h-[200px] rounded-lg object-cover cursor-pointer hover:opacity-80 transition-opacity"
+                />
+              </a>
+            ) : (
+              <div className="flex items-center gap-2 px-3 py-2 bg-slate-600/30 rounded-lg">
+                <Image size={16} className="opacity-60" />
+                <span className="text-xs opacity-70">Imagem (sem preview)</span>
+              </div>
+            )}
+            {conteudo && !conteudo.startsWith('📷') && (
+              <p className="whitespace-pre-wrap break-words text-xs opacity-80 mt-1">{conteudo}</p>
+            )}
+          </div>
+        ) : isDocument ? (
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-2 text-xs opacity-70">
+              <FileText size={12} />
+              <span>Documento</span>
+            </div>
+            <div className="flex items-center gap-3 px-3 py-2 bg-slate-600/30 rounded-lg">
+              <FileText size={20} className="opacity-70 shrink-0" />
+              <div className="flex flex-col min-w-0">
+                <span className="text-sm font-medium truncate">{metadata.filename || 'documento'}</span>
+                <span className="text-[10px] opacity-60">{metadata.mimetype || 'PDF'}</span>
+              </div>
+            </div>
+            {conteudo && !conteudo.startsWith('📄') && (
+              <p className="whitespace-pre-wrap break-words text-xs opacity-80 mt-1">{conteudo}</p>
+            )}
           </div>
         ) : (
           <p className="whitespace-pre-wrap break-words">{conteudo}</p>

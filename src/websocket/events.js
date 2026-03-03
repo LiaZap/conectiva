@@ -10,6 +10,7 @@ export const EVENTS = {
   NOVA_MENSAGEM: 'nova_mensagem',
   IA_CLASSIFICOU: 'ia_classificou',
   TRANSCREVENDO_AUDIO: 'transcrevendo_audio',
+  ANALISANDO_MIDIA: 'analisando_midia',
   CHAMANDO_MK: 'chamando_mk',
   MK_RETORNOU: 'mk_retornou',
   RESPOSTA_ENVIADA: 'resposta_enviada',

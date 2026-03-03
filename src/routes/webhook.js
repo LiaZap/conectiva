@@ -404,6 +404,9 @@ async function processMessage(canal, body, replyFn) {
     }
   }
 
+  // 8.8. Se intenção é VIABILIDADE e MK retornou regiões, a IA vai comparar com o endereço do cliente
+  // A formatResponse() já recebe os dados do MK e o histórico — ela saberá formatar a resposta de cobertura
+
   // 9. Formatar resposta final
   let resposta;
   if (negociacao && negociacao.mensagem) {

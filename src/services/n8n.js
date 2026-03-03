@@ -14,6 +14,7 @@ export const ACTIONS = {
   FATURAS_AVANCADO:     '/webhook/mk-faturas-avancado',
   ATUALIZAR_CADASTRO:   '/webhook/mk-atualizar-cadastro',
   CONSULTAR_CADASTRO:   '/webhook/mk-consulta-doc',
+  CONSULTAR_COBERTURA:  '/webhook/mk-viabilidade-cobertura',
 };
 
 const client = axios.create({

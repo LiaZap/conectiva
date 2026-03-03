@@ -1,11 +1,11 @@
 import { query } from '../config/database.js';
 
-export async function saveMessage({ session_id, direcao, conteudo, canal }) {
+export async function saveMessage({ session_id, direcao, conteudo, canal, metadata }) {
   const { rows } = await query(
-    `INSERT INTO messages (session_id, direcao, conteudo, canal)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO messages (session_id, direcao, conteudo, canal, metadata)
+     VALUES ($1, $2, $3, $4, $5)
      RETURNING *`,
-    [session_id, direcao, conteudo, canal]
+    [session_id, direcao, conteudo, canal, metadata ? JSON.stringify(metadata) : '{}']
   );
   return rows[0];
 }

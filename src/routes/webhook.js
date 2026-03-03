@@ -3,6 +3,7 @@ import { normalizeChannel } from '../utils/normalizer.js';
 import { extractCPFFromText, formatPhone } from '../utils/validators.js';
 import * as sessionService from '../services/session.js';
 import * as logger from '../services/logger.js';
+import { query } from '../config/database.js';
 
 import { execute as n8nExecute } from '../services/n8n.js';
 import { sendText, sendDocument, downloadAudio } from '../services/whatsapp.js';
@@ -440,8 +441,8 @@ router.post('/webhook/whatsapp', async (req, res) => {
           const session = await sessionService.findOrCreate({ telefone, canal: 'whatsapp', pushName });
           const sid = session.id;
 
-          // Salvar mensagem de entrada (áudio) no banco
-          await logger.saveMessage({ session_id: sid, direcao: 'entrada', conteudo: '🎤 [Áudio]', canal: 'whatsapp' });
+          // Salvar mensagem de entrada (áudio) no banco — base64 será atualizado após download
+          const audioMsg = await logger.saveMessage({ session_id: sid, direcao: 'entrada', conteudo: '🎤 [Áudio]', canal: 'whatsapp' });
           // Emitir evento para o dashboard atualizar em tempo real
           emit(EVENTS.NOVA_MENSAGEM, { session_id: sid, message: '🎤 [Áudio]', telefone, canal: 'whatsapp' });
           emitToSession(sid, EVENTS.NOVA_MENSAGEM, { session_id: sid, message: '🎤 [Áudio]', direcao: 'entrada' });
@@ -451,12 +452,14 @@ router.post('/webhook/whatsapp', async (req, res) => {
 
           // Tentar transcrever: 1) via Uazapi /message/download, 2) via URL direta, 3) via base64
           let result = null;
+          let audioBase64ForDashboard = null; // Guardar base64 para o player no dashboard
 
           // 1) Download via Uazapi /message/download (método principal — usa messageId)
           if (messageId) {
             console.log(`[webhook] Tentando download via Uazapi /message/download... (messageId: ${messageId})`);
             const dl = await downloadAudio({ messageId });
             if (dl.success && dl.buffer && dl.buffer.length > 100) {
+              audioBase64ForDashboard = dl.buffer.toString('base64');
               result = await transcribeAudioBuffer(dl.buffer, mediaMimetype, mediaFilename);
             } else {
               console.log(`[webhook] Download Uazapi falhou: ${dl.error}`);
@@ -479,6 +482,15 @@ router.post('/webhook/whatsapp', async (req, res) => {
 
           if (!result && !messageId && !mediaUrl && !mediaBase64) {
             console.log(`[webhook] Áudio sem messageId, sem mediaUrl e sem base64 de ${telefone}`);
+          }
+
+          // Atualizar mensagem de áudio com base64 para player no dashboard
+          if (audioBase64ForDashboard && audioMsg?.id) {
+            const mime = (mediaMimetype || 'audio/ogg').split(';')[0].trim();
+            await query(
+              `UPDATE messages SET metadata = $1 WHERE id = $2`,
+              [JSON.stringify({ type: 'audio', audio_base64: audioBase64ForDashboard, mimetype: mime }), audioMsg.id]
+            );
           }
 
           if (result) {

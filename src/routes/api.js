@@ -235,6 +235,35 @@ router.delete('/api/sessions/:id', async (req, res) => {
 });
 
 // ============================================================
+// AUDIO - Servir áudio para player no dashboard
+// ============================================================
+
+// GET /api/audio/:messageId - Retorna áudio como binário para o player
+router.get('/api/audio/:messageId', requireAuth, async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const result = await query('SELECT metadata FROM messages WHERE id = $1', [messageId]);
+
+    if (!result.rows[0]?.metadata?.audio_base64) {
+      return res.status(404).json({ success: false, error: 'Áudio não encontrado' });
+    }
+
+    const { audio_base64, mimetype } = result.rows[0].metadata;
+    const buffer = Buffer.from(audio_base64, 'base64');
+
+    res.set({
+      'Content-Type': mimetype || 'audio/ogg',
+      'Content-Length': buffer.length,
+      'Cache-Control': 'private, max-age=3600',
+    });
+    res.send(buffer);
+  } catch (err) {
+    console.error('[api] GET /audio/:messageId erro:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ============================================================
 // ESCALATIONS
 // ============================================================
 

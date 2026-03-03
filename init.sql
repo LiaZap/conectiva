@@ -33,6 +33,7 @@ CREATE TABLE messages (
     direcao VARCHAR(10) NOT NULL CHECK (direcao IN ('entrada', 'saida')),
     conteudo TEXT NOT NULL,
     canal VARCHAR(20),
+    metadata JSONB DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

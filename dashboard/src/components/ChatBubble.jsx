@@ -1,19 +1,26 @@
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Bot, User } from 'lucide-react';
+import { Bot, User, Mic } from 'lucide-react';
+
+const API_BASE = import.meta.env.VITE_API_URL || '';
 
 /**
  * Props:
  *   direcao | direction  — 'entrada' (client) or 'saida' (bot)
  *   conteudo | message   — text content
  *   created_at | timestamp — ISO string
+ *   id                   — message UUID (para buscar áudio)
+ *   metadata             — { type: 'audio', audio_base64, mimetype }
  */
 export default function ChatBubble(props) {
   const direcao = props.direcao || props.direction;
   const conteudo = props.conteudo || props.message || '';
   const ts = props.created_at || props.timestamp;
+  const metadata = props.metadata || {};
+  const messageId = props.id;
 
   const isClient = direcao === 'entrada';
+  const isAudio = metadata?.type === 'audio' && metadata?.audio_base64;
   const time = ts ? format(new Date(ts), 'HH:mm', { locale: ptBR }) : '';
 
   return (
@@ -31,7 +38,22 @@ export default function ChatBubble(props) {
             : 'bg-conectiva-600 text-white rounded-br-md'
         }`}
       >
-        <p className="whitespace-pre-wrap break-words">{conteudo}</p>
+        {isAudio ? (
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-2 text-xs opacity-70">
+              <Mic size={12} />
+              <span>Áudio do cliente</span>
+            </div>
+            <audio
+              controls
+              preload="none"
+              className="w-full max-w-[280px] h-8"
+              src={`data:${metadata.mimetype || 'audio/ogg'};base64,${metadata.audio_base64}`}
+            />
+          </div>
+        ) : (
+          <p className="whitespace-pre-wrap break-words">{conteudo}</p>
+        )}
         {time && (
           <span className={`block text-[10px] mt-1 text-right ${isClient ? 'text-slate-400' : 'text-conectiva-200'}`}>
             {time}

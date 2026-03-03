@@ -29,6 +29,7 @@ export function init(server) {
       origin: [
         'http://localhost:3001',
         'http://127.0.0.1:3001',
+        'https://conectiva.bahflash.tech',
         process.env.DASHBOARD_ORIGIN,
         process.env.WIDGET_ORIGIN,
       ].filter(Boolean),

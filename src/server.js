@@ -33,7 +33,8 @@ app.use(cors({
   origin: [
     'http://localhost:3001',
     'http://127.0.0.1:3001',
-    process.env.DASHBOARD_ORIGIN,       // Permitir domínio personalizado
+    'https://conectiva.bahflash.tech',  // Dashboard domínio próprio
+    process.env.DASHBOARD_ORIGIN,       // Permitir domínio personalizado adicional
     process.env.WIDGET_ORIGIN,          // Permitir domínio do site com widget
   ].filter(Boolean),
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
@@ -52,6 +53,9 @@ app.use('/widget', express.static(join(__dirname, '..', 'widget')));
 // ── Dashboard estático (produção) ──
 if (config.nodeEnv === 'production') {
   const dashPath = join(__dirname, '..', 'dashboard', 'dist');
+  // Servir na raiz (para domínio próprio: conectiva.bahflash.tech)
+  app.use(express.static(dashPath));
+  // Manter compatibilidade com /dashboard/ (legado EasyPanel)
   app.use('/dashboard', express.static(dashPath));
   app.get('/dashboard/*', (_req, res) => {
     res.sendFile(join(dashPath, 'index.html'));
@@ -106,6 +110,20 @@ app.get('/health', async (_req, res) => {
   // Sempre retorna 200 para não ser reiniciado pelo health check do EasyPanel/Docker
   res.status(200).json({ status: healthy ? 'ok' : 'degraded', checks });
 });
+
+// ── SPA catch-all (domínio próprio — todas rotas não-API servem o index.html) ──
+if (config.nodeEnv === 'production') {
+  const dashPath = join(__dirname, '..', 'dashboard', 'dist');
+  app.get('*', (req, res, next) => {
+    // Não interceptar rotas de API, webhook, widget ou health
+    if (req.path.startsWith('/api') || req.path.startsWith('/webhook') ||
+        req.path.startsWith('/widget') || req.path.startsWith('/health') ||
+        req.path.startsWith('/socket.io')) {
+      return next();
+    }
+    res.sendFile(join(dashPath, 'index.html'));
+  });
+}
 
 // Error handler global
 app.use((err, _req, res, _next) => {

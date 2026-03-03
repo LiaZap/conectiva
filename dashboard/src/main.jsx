@@ -6,9 +6,12 @@ import { AuthProvider } from './context/AuthContext.jsx';
 import { WebSocketProvider } from './context/WebSocketContext.jsx';
 import './index.css';
 
+// Base path dinâmico: '/' para domínio próprio, '/dashboard' para EasyPanel
+const basePath = import.meta.env.VITE_BASE_PATH === '/' ? '/' : '/dashboard';
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <BrowserRouter basename="/dashboard">
+    <BrowserRouter basename={basePath}>
       <AuthProvider>
         <WebSocketProvider>
           <App />

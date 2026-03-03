@@ -88,11 +88,7 @@ redis.on('error', (err) => {
   console.error('[redis] Erro de conexão:', err.message);
 });
 
-// Rota raiz (evita 404 no health check padrão do EasyPanel)
-app.get('/', (_req, res) => {
-  res.json({ service: 'conectiva-bot', status: 'running' });
-});
-
+// Health check (EasyPanel/Docker usam /health)
 app.get('/health', async (_req, res) => {
   const checks = { postgres: false, redis: false };
 

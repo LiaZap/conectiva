@@ -11,7 +11,7 @@ import { analisarNegociacao } from '../services/negotiation.js';
 import { classify, formatResponse, generateDiagnostic, generateSummary } from '../services/ai.js';
 import { transcribeAudio, transcribeAudioBase64, transcribeAudioBuffer } from '../services/audio.js';
 import { analyzeImage, analyzeDocument } from '../services/vision.js';
-import { notifyEscalation } from '../services/notification.js';
+import { notifyEscalation, notifyNewLead } from '../services/notification.js';
 import { emit, emitToSession, EVENTS } from '../websocket/events.js';
 
 const router = Router();
@@ -297,6 +297,9 @@ async function processMessage(canal, body, replyFn) {
             console.error('[webhook] Erro ao criar lead:', leadErr.message);
           }
 
+          // Notificar grupo de atendentes sobre novo lead (best-effort)
+          notifyNewLead({ session, intencao, mensagem: message }).catch(() => {});
+
           // Informar o cliente e encerrar este ciclo
           const respostaNaoCadastrado =
             `Não encontrei um cadastro no nosso sistema com o CPF informado 🤔\n\n` +
@@ -436,6 +439,9 @@ async function processMessage(canal, body, replyFn) {
       } catch (leadErr) {
         console.error('[webhook] Erro ao criar lead:', leadErr.message);
       }
+
+      // Notificar grupo de atendentes (best-effort)
+      notifyNewLead({ session, intencao, mensagem: message }).catch(() => {});
 
       // Override: substituir resposta padrão por mensagem de cliente não encontrado
       mkResult._clienteNaoEncontrado = true;

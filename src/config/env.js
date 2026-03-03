@@ -52,4 +52,8 @@ export const config = {
 
   // Sessão
   sessionTtlMinutes: parseInt(process.env.SESSION_TTL_MINUTES || '30', 10),
+
+  // Notificações
+  notifyGroupId: process.env.NOTIFY_GROUP_ID || '',         // ID do grupo WhatsApp para alertas (ex: 120363xxx@g.us)
+  dashboardUrl: process.env.DASHBOARD_URL || '',             // URL pública do dashboard (ex: https://cusrzj.easypanel.host/dashboard)
 };

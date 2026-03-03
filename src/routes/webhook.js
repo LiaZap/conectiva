@@ -11,6 +11,7 @@ import { analisarNegociacao } from '../services/negotiation.js';
 import { classify, formatResponse, generateDiagnostic, generateSummary } from '../services/ai.js';
 import { transcribeAudio, transcribeAudioBase64, transcribeAudioBuffer } from '../services/audio.js';
 import { analyzeImage, analyzeDocument } from '../services/vision.js';
+import { notifyEscalation } from '../services/notification.js';
 import { emit, emitToSession, EVENTS } from '../websocket/events.js';
 
 const router = Router();
@@ -463,8 +464,20 @@ async function processMessage(canal, body, replyFn) {
       historico_conversa: historico,
       dados_cliente: { telefone, nome: session.nome_cliente, cpf: session.cpf_cnpj },
     });
-    emit(EVENTS.ESCALONAMENTO, { session_id: sid, escalation_id: escalation.id, motivo: escalation.motivo });
-    emitToSession(sid, EVENTS.ESCALONAMENTO, { motivo: escalation.motivo });
+    const escMotivo = escalation.motivo;
+    emit(EVENTS.ESCALONAMENTO, {
+      session_id: sid,
+      escalation_id: escalation.id,
+      motivo: escMotivo,
+      prioridade: escalation.prioridade,
+      cliente: session.nome_cliente || 'Não identificado',
+      telefone,
+      canal,
+    });
+    emitToSession(sid, EVENTS.ESCALONAMENTO, { motivo: escMotivo });
+
+    // Notificar grupo WhatsApp dos atendentes (best-effort)
+    notifyEscalation({ session, escalation, motivo: escMotivo }).catch(() => {});
   }
 }
 

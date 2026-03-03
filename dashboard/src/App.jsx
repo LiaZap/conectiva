@@ -2,6 +2,8 @@ import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { Radio, BarChart3, AlertTriangle, Settings, Wifi, WifiOff, LogOut, User, Loader2 } from 'lucide-react';
 import { useWS } from './context/WebSocketContext.jsx';
 import { useAuth } from './context/AuthContext.jsx';
+import useEscalationAlert from './hooks/useEscalationAlert.js';
+import NotificationBell from './components/NotificationBell.jsx';
 import LiveMonitor from './pages/LiveMonitor.jsx';
 import SessionDetail from './pages/SessionDetail.jsx';
 import Metrics from './pages/Metrics.jsx';
@@ -15,7 +17,7 @@ const NAV = [
   { to: '/settings', icon: Settings, label: 'Configurações' },
 ];
 
-function Sidebar() {
+function Sidebar({ escalationCount, onClearEscalations }) {
   const { connected } = useWS();
   const { user, logout } = useAuth();
 
@@ -26,7 +28,10 @@ function Sidebar() {
         <div className="flex items-center justify-center mb-2">
           <img src={`${import.meta.env.BASE_URL}logo_conectiva.png`} alt="Conectiva Internet" className="h-9 w-auto brightness-125" />
         </div>
-        <p className="text-[11px] text-dourado-400 font-semibold text-center tracking-wide">Painel de Monitoramento</p>
+        <div className="flex items-center justify-center gap-2">
+          <p className="text-[11px] text-dourado-400 font-semibold text-center tracking-wide">Painel de Monitoramento</p>
+          <NotificationBell count={escalationCount} onClear={onClearEscalations} />
+        </div>
       </div>
 
       {/* Navegação */}
@@ -46,6 +51,11 @@ function Sidebar() {
           >
             <Icon size={18} className={undefined} />
             {label}
+            {to === '/escalations' && escalationCount > 0 && (
+              <span className="ml-auto text-[10px] font-bold text-white bg-red-500 rounded-full px-1.5 py-0.5 animate-pulse">
+                {escalationCount > 9 ? '9+' : escalationCount}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>
@@ -82,6 +92,7 @@ function Sidebar() {
 
 export default function App() {
   const { isAuthenticated, loading } = useAuth();
+  const { pendingCount, clearCount } = useEscalationAlert();
 
   // Validando token salvo...
   if (loading) {
@@ -112,7 +123,7 @@ export default function App() {
   // Autenticado → dashboard completo
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar />
+      <Sidebar escalationCount={pendingCount} onClearEscalations={clearCount} />
       <main className="flex-1 overflow-auto">
         <Routes>
           <Route path="/" element={<LiveMonitor />} />

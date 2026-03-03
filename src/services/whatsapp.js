@@ -198,3 +198,24 @@ export async function sendButtons(telefone, texto, buttons) {
     return { success: false, error: err.message };
   }
 }
+
+/**
+ * Envia mensagem de texto para um grupo WhatsApp via Uazapi.
+ * Usa o JID do grupo (ex: '120363xxxxx@g.us') no campo number.
+ * Sem delay de digitação — é notificação interna, não conversa.
+ */
+export async function sendGroupText(groupId, texto) {
+  try {
+    if (!groupId) return { success: false, error: 'groupId não configurado' };
+
+    const { data } = await client.post('/send/text', {
+      number: groupId,
+      text: texto,
+    });
+    console.log('[whatsapp] sendGroupText ok', { groupId: groupId.substring(0, 10) });
+    return { success: true, data };
+  } catch (err) {
+    console.error('[whatsapp] sendGroupText erro', { error: err.message });
+    return { success: false, error: err.message };
+  }
+}

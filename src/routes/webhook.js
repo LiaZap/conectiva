@@ -456,6 +456,25 @@ async function processMessage(canal, body, replyFn) {
       }
     }
 
+    // ── CONSULTAR_COBERTURA: se já foi feito nesta sessão, reusar resultado anterior ──
+    if (acaoMK === 'CONSULTAR_COBERTURA' && !mkResult) {
+      try {
+        const { rows } = await query(
+          `SELECT dados_saida FROM ai_actions_log
+           WHERE session_id = $1 AND acao = 'CONSULTAR_COBERTURA' AND status = 'sucesso'
+           ORDER BY created_at DESC LIMIT 1`,
+          [sid]
+        );
+        if (rows.length > 0 && rows[0].dados_saida) {
+          const cached = rows[0].dados_saida;
+          console.log(`[webhook] CONSULTAR_COBERTURA já feito nesta sessão — reusando (tem_cobertura: ${cached.data?.tem_cobertura})`);
+          mkResult = { success: true, data: cached.data || cached, tempo_ms: 0, endpoint: 'cache' };
+        }
+      } catch (err) {
+        console.error('[webhook] Erro ao buscar cobertura em cache:', err.message);
+      }
+    }
+
     // ── Executar a ação principal (se não foi resolvida na etapa de dependência) ──
     if (!mkResult) {
       mkResult = await n8nExecute({ action: acaoMK, params: mkParams, session_id: sid });

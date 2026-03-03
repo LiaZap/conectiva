@@ -41,7 +41,9 @@ router.get('/api/metrics/overview', async (req, res) => {
            ROUND(
              COUNT(*) FILTER (WHERE s.resolvida_por = 'ia')::numeric
              / NULLIF(COUNT(*) FILTER (WHERE s.status IN ('finalizada','expirada')), 0) * 100, 1
-           ) AS taxa_resolucao_automatica
+           ) AS taxa_resolucao_automatica,
+           ROUND(AVG(s.nota_satisfacao)::numeric, 1) AS media_satisfacao,
+           COUNT(*) FILTER (WHERE s.nota_satisfacao IS NOT NULL)::int AS total_avaliacoes
          FROM sessions s WHERE ${pf.clause}`,
         pf.params
       ),
@@ -201,6 +203,77 @@ router.get('/api/metrics/top-escalations', async (req, res) => {
     res.json({ success: true, data: rows });
   } catch (err) {
     console.error('[metrics] top-escalations erro:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ============================================================
+// GET /api/metrics/satisfaction (CSAT - pesquisa de satisfação)
+// ============================================================
+router.get('/api/metrics/satisfaction', async (req, res) => {
+  try {
+    const pf = buildPeriodFilter(req.query.periodo);
+
+    const [overview, distribution, daily] = await Promise.all([
+      // Média geral e total de avaliações
+      query(
+        `SELECT
+           COUNT(*) FILTER (WHERE s.nota_satisfacao IS NOT NULL)::int AS total_avaliacoes,
+           ROUND(AVG(s.nota_satisfacao)::numeric, 2) AS media_satisfacao,
+           COUNT(*) FILTER (WHERE s.nota_satisfacao >= 4)::int AS promotores,
+           COUNT(*) FILTER (WHERE s.nota_satisfacao <= 2)::int AS detratores,
+           COUNT(*) FILTER (WHERE s.nota_satisfacao = 5)::int AS nota_5,
+           COUNT(*) FILTER (WHERE s.nota_satisfacao = 4)::int AS nota_4,
+           COUNT(*) FILTER (WHERE s.nota_satisfacao = 3)::int AS nota_3,
+           COUNT(*) FILTER (WHERE s.nota_satisfacao = 2)::int AS nota_2,
+           COUNT(*) FILTER (WHERE s.nota_satisfacao = 1)::int AS nota_1
+         FROM sessions s WHERE ${pf.clause} AND s.nota_satisfacao IS NOT NULL`,
+        pf.params
+      ),
+      // Distribuição por nota
+      query(
+        `SELECT s.nota_satisfacao AS nota, COUNT(*)::int AS total
+         FROM sessions s WHERE ${pf.clause} AND s.nota_satisfacao IS NOT NULL
+         GROUP BY s.nota_satisfacao ORDER BY s.nota_satisfacao`,
+        pf.params
+      ),
+      // Média por dia (para gráfico de linha)
+      query(
+        `SELECT
+           DATE(s.created_at) AS dia,
+           ROUND(AVG(s.nota_satisfacao)::numeric, 2) AS media,
+           COUNT(*)::int AS total
+         FROM sessions s WHERE ${pf.clause} AND s.nota_satisfacao IS NOT NULL
+         GROUP BY DATE(s.created_at) ORDER BY dia`,
+        pf.params
+      ),
+    ]);
+
+    const ov = overview.rows[0] || {};
+    const totalAv = ov.total_avaliacoes || 0;
+    const nps = totalAv > 0
+      ? Math.round(((ov.promotores - ov.detratores) / totalAv) * 100)
+      : null;
+
+    res.json({
+      success: true,
+      data: {
+        media_satisfacao: ov.media_satisfacao ? Number(ov.media_satisfacao) : null,
+        total_avaliacoes: totalAv,
+        nps,
+        distribuicao: distribution.rows,
+        por_dia: daily.rows,
+        notas: {
+          nota_5: ov.nota_5 || 0,
+          nota_4: ov.nota_4 || 0,
+          nota_3: ov.nota_3 || 0,
+          nota_2: ov.nota_2 || 0,
+          nota_1: ov.nota_1 || 0,
+        },
+      },
+    });
+  } catch (err) {
+    console.error('[metrics] satisfaction erro:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });

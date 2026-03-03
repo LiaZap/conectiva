@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, User, MessageSquare, Brain, Link, Clock, ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowLeft, User, MessageSquare, Brain, Link, Clock, ChevronDown, ChevronRight, Star, FileText } from 'lucide-react';
 import { format, formatDistanceStrict } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { getSession } from '../services/api.js';
@@ -153,6 +153,45 @@ export default function SessionDetail() {
             </div>
           ))}
         </div>
+
+        {/* Nota de Satisfação */}
+        {s.nota_satisfacao && (
+          <div className="mt-4 pt-3 border-t border-slate-700/50">
+            <div className="flex items-center gap-2 mb-1">
+              <Star size={14} className="text-yellow-400 fill-yellow-400" />
+              <span className="text-xs text-slate-400">Satisfação do cliente</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <Star
+                  key={n}
+                  size={20}
+                  className={n <= s.nota_satisfacao
+                    ? 'text-yellow-400 fill-yellow-400'
+                    : 'text-slate-600'
+                  }
+                />
+              ))}
+              <span className="text-sm font-semibold text-slate-200 ml-2">
+                {s.nota_satisfacao}/5
+                {s.nota_satisfacao >= 4 ? ' — Positivo' : s.nota_satisfacao === 3 ? ' — Neutro' : ' — Negativo'}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Resumo IA */}
+        {s.resumo_ia && (
+          <div className="mt-4 pt-3 border-t border-slate-700/50">
+            <div className="flex items-center gap-2 mb-2">
+              <FileText size={14} className="text-conectiva-400" />
+              <span className="text-xs text-slate-400">Resumo gerado pela IA</span>
+            </div>
+            <p className="text-sm text-slate-200 leading-relaxed bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+              {s.resumo_ia}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Radio, Users, CheckCircle, Zap, Clock, Trash2, X, UserCheck, Bot, Send } from 'lucide-react';
+import { Radio, Users, CheckCircle, Zap, Clock, Trash2, X, UserCheck, Bot, Send, Star, FileText } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useWS } from '../context/WebSocketContext.jsx';
@@ -257,7 +257,19 @@ export default function LiveMonitor() {
                       <div className="flex items-center gap-1 mt-1 text-[10px] text-slate-500">
                         <Clock size={10} />
                         {s.created_at && formatDistanceToNow(new Date(s.created_at), { addSuffix: true, locale: ptBR })}
+                        {s.nota_satisfacao && (
+                          <span className="ml-auto flex items-center gap-0.5">
+                            <Star size={9} className="text-yellow-400 fill-yellow-400" />
+                            <span className="text-yellow-400 font-medium">{s.nota_satisfacao}</span>
+                          </span>
+                        )}
                       </div>
+                      {s.resumo_ia && (
+                        <p className="text-[10px] text-slate-500 mt-1 line-clamp-2 leading-tight">
+                          <FileText size={9} className="inline mr-0.5 opacity-60" />
+                          {s.resumo_ia}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </button>

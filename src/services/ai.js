@@ -132,6 +132,24 @@ Com base no problema relatado e nos dados da conexão do cliente, gere um diagn�
 4. Informe que em caso de urgência, pode ligar para (31) 3712-1294 ou (31) 3268-4691
 Seja clara, direta e acessível. O cliente não é técnico.`;
 
+const SUMMARY_PROMPT = `Você é um assistente que gera resumos concisos de atendimentos para a Conectiva Internet (provedor de internet por fibra óptica).
+
+Analise o histórico da conversa e gere um resumo em 2-3 linhas, incluindo:
+1. O que o cliente queria (intenção principal)
+2. O que foi feito (ações tomadas)
+3. O resultado final (resolvido, escalonado, pendente)
+
+Regras:
+- Máximo de 3 linhas / 200 caracteres
+- Seja objetivo e direto
+- Use linguagem profissional
+- Mencione dados relevantes (ex: "2ª via do boleto de R$150", "O.S. #12345 aberta")
+- Se houver nome do cliente, mencione
+- NÃO use emojis no resumo
+
+Exemplo de resumo bom:
+"Cliente João solicitou 2ª via de boleto vencido (R$129,90). Boleto gerado e enviado com sucesso via WhatsApp. Atendimento resolvido pela IA."`;
+
 const FALLBACK_RESPONSE = {
   intencao: 'HUMANO',
   confianca: 0,
@@ -227,6 +245,52 @@ export async function formatResponse({ intencao, mkData, session, historico }) {
       fallbacks[intencao] ||
       'Desculpe, tive um problema ao processar sua solicitação. Vou transferir para um atendente que poderá ajudá-lo melhor.'
     );
+  }
+}
+
+/**
+ * Gera resumo automático da conversa usando IA.
+ * Chamado ao finalizar/expirar sessão.
+ */
+export async function generateSummary(historico, session) {
+  try {
+    if (!historico || historico.length === 0) return null;
+
+    const conversationText = historico.map((msg) => {
+      const role = msg.direcao === 'entrada' ? 'Cliente' : 'Bot';
+      return `${role}: ${msg.conteudo}`;
+    }).join('\n');
+
+    const context = `Dados da sessão:
+- Cliente: ${session?.nome_cliente || 'Não identificado'}
+- Telefone: ${session?.telefone || '—'}
+- Intenção: ${session?.intencao_principal || '—'}
+- Status: ${session?.status || '—'}
+- Resolvida por: ${session?.resolvida_por || '—'}
+- Total de mensagens: ${session?.total_mensagens || historico.length}
+
+Conversa:
+${conversationText}`;
+
+    const start = Date.now();
+    const completion = await openai.chat.completions.create({
+      model: MODEL,
+      messages: [
+        { role: 'system', content: SUMMARY_PROMPT },
+        { role: 'user', content: context },
+      ],
+      temperature: 0.3,
+      max_tokens: 200,
+    });
+    const elapsed = Date.now() - start;
+
+    const summary = completion.choices[0].message.content?.trim();
+    console.log('[ai] generateSummary', { elapsed: `${elapsed}ms`, length: summary?.length });
+
+    return summary || null;
+  } catch (err) {
+    console.error('[ai] Erro ao gerar resumo:', err.message);
+    return null;
   }
 }
 

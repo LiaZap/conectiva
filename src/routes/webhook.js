@@ -8,12 +8,34 @@ import { query } from '../config/database.js';
 import { execute as n8nExecute } from '../services/n8n.js';
 import { sendText, sendDocument, downloadMedia } from '../services/whatsapp.js';
 import { analisarNegociacao } from '../services/negotiation.js';
-import { classify, formatResponse, generateDiagnostic } from '../services/ai.js';
+import { classify, formatResponse, generateDiagnostic, generateSummary } from '../services/ai.js';
 import { transcribeAudio, transcribeAudioBase64, transcribeAudioBuffer } from '../services/audio.js';
 import { analyzeImage, analyzeDocument } from '../services/vision.js';
 import { emit, emitToSession, EVENTS } from '../websocket/events.js';
 
 const router = Router();
+
+// ── Mensagem de pesquisa de satisfação (CSAT) ──
+const CSAT_MESSAGE = `Obrigado por entrar em contato com a *Conectiva Internet*! 😊
+
+Antes de finalizar, gostaríamos de saber: *como você avalia nosso atendimento?*
+
+Responda com uma nota de *1 a 5*:
+1️⃣ Péssimo
+2️⃣ Ruim
+3️⃣ Regular
+4️⃣ Bom
+5️⃣ Excelente
+
+Sua opinião é muito importante para nós! 💙`;
+
+const CSAT_THANKS = {
+  1: 'Lamentamos que sua experiência não tenha sido boa. 😔 Vamos trabalhar para melhorar! Obrigado pelo feedback.',
+  2: 'Agradecemos pelo feedback. Vamos nos esforçar para melhorar nosso atendimento! 🙏',
+  3: 'Obrigado pela avaliação! Vamos continuar melhorando para te atender cada vez melhor. 😊',
+  4: 'Que bom saber que foi bem atendido! Obrigado pela avaliação! 😊✅',
+  5: 'Ficamos muito felizes com sua avaliação! ⭐ Obrigado pela confiança na *Conectiva Internet*! 💙',
+};
 
 // ── Buffer de mensagens (debounce) ──────────────────────
 // Clientes frequentemente enviam várias mensagens seguidas.
@@ -103,6 +125,27 @@ async function processMessage(canal, body, replyFn) {
   if (!message) return;
 
   const telefone = canal === 'whatsapp' ? formatPhone(from) : from;
+
+  // 1.5. Verificar se há sessão aguardando avaliação CSAT
+  const csatSession = await sessionService.findAwaitingCSAT(telefone, canal);
+  if (csatSession) {
+    const nota = message.trim().replace(/[^\d]/g, '');
+    if (['1', '2', '3', '4', '5'].includes(nota)) {
+      // Salvar nota CSAT
+      await sessionService.saveCSAT(csatSession.id, parseInt(nota));
+      const agradecimento = CSAT_THANKS[parseInt(nota)];
+      await replyFn(telefone, agradecimento);
+      await logger.saveMessage({ session_id: csatSession.id, direcao: 'entrada', conteudo: message, canal });
+      await logger.saveMessage({ session_id: csatSession.id, direcao: 'saida', conteudo: agradecimento, canal });
+      emit(EVENTS.SESSAO_ATUALIZADA, { session_id: csatSession.id, status: 'finalizada', nota_satisfacao: parseInt(nota) });
+      console.log(`[webhook] CSAT capturada: nota ${nota} para sessão ${csatSession.id}`);
+      return;
+    }
+    // Se não é uma nota válida, tratar como nova conversa (ignorar CSAT pendente)
+    // Finalizar a sessão CSAT sem nota e continuar fluxo normal
+    await sessionService.update(csatSession.id, { status: 'finalizada' });
+    console.log(`[webhook] CSAT ignorada (resposta não é nota), finalizando sessão ${csatSession.id}`);
+  }
 
   // 2. Busca ou cria sessão
   const session = await sessionService.findOrCreate({ telefone, canal, pushName });
@@ -386,6 +429,24 @@ async function processMessage(canal, body, replyFn) {
   // 12. Emitir resposta_enviada
   emit(EVENTS.RESPOSTA_ENVIADA, { session_id: sid, intencao, resposta, tempo_total_ms });
   emitToSession(sid, EVENTS.RESPOSTA_ENVIADA, { resposta, direcao: 'saida' });
+
+  // 12.5. CSAT: Se a IA resolveu com sucesso (ação MK concluída), enviar pesquisa de satisfação
+  const acaoResolvida = acaoMK && mkResult?.success && intencao !== 'HUMANO';
+  if (acaoResolvida) {
+    // Enviar pesquisa após 3 segundos (para o cliente ler a resposta antes)
+    setTimeout(async () => {
+      try {
+        await replyFn(telefone, CSAT_MESSAGE);
+        await logger.saveMessage({ session_id: sid, direcao: 'saida', conteudo: CSAT_MESSAGE, canal: body._buffered ? (body.canal || canal) : canal });
+        await sessionService.startCSAT(sid);
+        // Gerar resumo IA em background
+        sessionService.generateAndSaveSummary(sid, session).catch(() => {});
+        console.log(`[webhook] CSAT enviada para sessão ${sid}`);
+      } catch (err) {
+        console.error(`[webhook] Erro ao enviar CSAT para ${sid}:`, err.message);
+      }
+    }, 3000);
+  }
 
   // 13. Escalonamento se HUMANO
   if (intencao === 'HUMANO') {

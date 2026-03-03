@@ -1,6 +1,7 @@
 import { query } from '../config/database.js';
 import { config } from '../config/env.js';
 import { emit, EVENTS } from '../websocket/events.js';
+import { generateSummary } from './ai.js';
 
 /**
  * Busca sessão reutilizável por telefone/canal, ou cria uma nova.
@@ -10,7 +11,7 @@ import { emit, EVENTS } from '../websocket/events.js';
 export async function findOrCreate({ telefone, canal, pushName }) {
   const ttl = config.sessionTtlMinutes;
 
-  // 1. Buscar sessão ativa ou aguardando humano (não expirada)
+  // 1. Buscar sessão ativa ou aguardando humano (não expirada) — excluir aguardando_avaliacao
   const { rows } = await query(
     `SELECT * FROM sessions
      WHERE telefone = $1 AND canal = $2 AND status IN ('ativa', 'aguardando_humano') AND expires_at > NOW()
@@ -105,21 +106,93 @@ export async function getHistory(sessionId, limit = 20) {
 
 /**
  * Expira sessões que passaram do TTL.
+ * Também gera resumo IA e envia pesquisa de satisfação para sessões expiradas.
  */
 export async function expireStale() {
-  // Buscar IDs antes de expirar para poder emitir evento
+  // Buscar sessões para expirar (com dados para o resumo)
   const { rows } = await query(
     `UPDATE sessions SET status = 'expirada', updated_at = NOW()
      WHERE status = 'ativa' AND expires_at <= NOW()
-     RETURNING id`
+     RETURNING *`
   );
 
   if (rows.length > 0) {
     console.log(`[session] ${rows.length} sessões expiradas`);
     for (const row of rows) {
       emit(EVENTS.SESSAO_ENCERRADA, { session_id: row.id, motivo: 'expirada' });
+      // Gerar resumo IA em background (não bloqueia expiração)
+      generateAndSaveSummary(row.id, row).catch((err) =>
+        console.error(`[session] Erro ao gerar resumo para ${row.id}:`, err.message)
+      );
     }
   }
 
   return rows.length;
+}
+
+/**
+ * Gera resumo IA e salva na sessão.
+ */
+export async function generateAndSaveSummary(sessionId, sessionData) {
+  try {
+    const historico = await getHistory(sessionId, 30);
+    if (!historico || historico.length < 2) return null;
+
+    const session = sessionData || await findById(sessionId);
+    const resumo = await generateSummary(historico, session);
+
+    if (resumo) {
+      await query(
+        'UPDATE sessions SET resumo_ia = $1 WHERE id = $2',
+        [resumo, sessionId]
+      );
+      console.log(`[session] Resumo IA salvo para sessão ${sessionId}`);
+    }
+
+    return resumo;
+  } catch (err) {
+    console.error('[session] Erro ao gerar/salvar resumo:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Inicia pesquisa de satisfação para a sessão.
+ * Muda status para 'aguardando_avaliacao'.
+ */
+export async function startCSAT(sessionId) {
+  await query(
+    `UPDATE sessions SET status = 'aguardando_avaliacao', updated_at = NOW() WHERE id = $1`,
+    [sessionId]
+  );
+  console.log(`[session] CSAT iniciada para sessão ${sessionId}`);
+}
+
+/**
+ * Salva nota de satisfação.
+ */
+export async function saveCSAT(sessionId, nota) {
+  const notaInt = parseInt(nota);
+  if (isNaN(notaInt) || notaInt < 1 || notaInt > 5) return false;
+
+  await query(
+    'UPDATE sessions SET nota_satisfacao = $1, status = $2, updated_at = NOW() WHERE id = $3',
+    [notaInt, 'finalizada', sessionId]
+  );
+  console.log(`[session] CSAT salva para sessão ${sessionId}: nota ${notaInt}`);
+  return true;
+}
+
+/**
+ * Busca sessão aguardando avaliação por telefone/canal.
+ */
+export async function findAwaitingCSAT(telefone, canal) {
+  const { rows } = await query(
+    `SELECT * FROM sessions
+     WHERE telefone = $1 AND canal = $2 AND status = 'aguardando_avaliacao'
+     AND updated_at > NOW() - INTERVAL '1 hour'
+     ORDER BY updated_at DESC LIMIT 1`,
+    [telefone, canal]
+  );
+  return rows[0] || null;
 }

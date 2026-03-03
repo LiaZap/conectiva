@@ -15,10 +15,12 @@ CREATE TABLE sessions (
     cpf_cnpj VARCHAR(20),
     cd_cliente_mk INTEGER,
     status VARCHAR(20) NOT NULL DEFAULT 'ativa'
-        CHECK (status IN ('ativa', 'aguardando_humano', 'finalizada', 'expirada')),
+        CHECK (status IN ('ativa', 'aguardando_humano', 'finalizada', 'expirada', 'aguardando_avaliacao')),
     intencao_principal VARCHAR(50),
     total_mensagens INTEGER NOT NULL DEFAULT 0,
     resolvida_por VARCHAR(20) CHECK (resolvida_por IN ('ia', 'humano', NULL)),
+    nota_satisfacao INTEGER CHECK (nota_satisfacao >= 1 AND nota_satisfacao <= 5),
+    resumo_ia TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '30 minutes')
@@ -155,3 +157,12 @@ INSERT INTO negotiation_rules (dias_atraso_min, dias_atraso_max, desconto_max_pe
     (31,  90,  10.00, 4, 'desconto_automatico'),
     (91,  180, 15.00, 6, 'desconto_automatico'),
     (181, 9999, 0.00, 1, 'escalonar_humano');
+
+-- ============================================================
+-- MIGRATION: Adicionar colunas CSAT + Resumo IA (v2)
+-- Executar em produção se o banco já existe:
+-- ============================================================
+-- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS nota_satisfacao INTEGER CHECK (nota_satisfacao >= 1 AND nota_satisfacao <= 5);
+-- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS resumo_ia TEXT;
+-- ALTER TABLE sessions DROP CONSTRAINT IF EXISTS sessions_status_check;
+-- ALTER TABLE sessions ADD CONSTRAINT sessions_status_check CHECK (status IN ('ativa', 'aguardando_humano', 'finalizada', 'expirada', 'aguardando_avaliacao'));

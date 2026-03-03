@@ -118,12 +118,28 @@ const expireInterval = setInterval(() => expireStale().catch((err) => {
   console.error('[server] Erro ao expirar sessões:', err.message);
 }), 60_000);
 
+// ── Migrações automáticas ──
+async function runMigrations() {
+  try {
+    // v2: CSAT + Resumo IA
+    await query('ALTER TABLE sessions ADD COLUMN IF NOT EXISTS nota_satisfacao INTEGER');
+    await query('ALTER TABLE sessions ADD COLUMN IF NOT EXISTS resumo_ia TEXT');
+    // Atualizar CHECK constraint de status (adicionar 'aguardando_avaliacao')
+    await query("ALTER TABLE sessions DROP CONSTRAINT IF EXISTS sessions_status_check");
+    await query("ALTER TABLE sessions ADD CONSTRAINT sessions_status_check CHECK (status IN ('ativa', 'aguardando_humano', 'finalizada', 'expirada', 'aguardando_avaliacao'))");
+    console.log('[migration] Migrações v2 aplicadas (CSAT + Resumo IA)');
+  } catch (err) {
+    console.error('[migration] Erro nas migrações:', err.message);
+  }
+}
+
 // Iniciar
-server.listen(config.port, () => {
+server.listen(config.port, async () => {
   console.log(`\n  🤖 Conectiva Bot rodando na porta ${config.port}`);
   console.log(`  📡 WebSocket pronto`);
   console.log(`  🔒 Segurança: helmet + rate-limit + sanitização`);
   console.log(`  🌐 Ambiente: ${config.nodeEnv}\n`);
+  await runMigrations();
 });
 
 // Shutdown graceful

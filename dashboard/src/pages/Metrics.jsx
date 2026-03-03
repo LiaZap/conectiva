@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Activity, Users, CheckCircle, Clock, AlertTriangle, Server, Target } from 'lucide-react';
+import { Activity, Users, CheckCircle, Clock, AlertTriangle, Server, Target, Star, ThumbsUp } from 'lucide-react';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend,
@@ -10,6 +10,7 @@ import StatusBadge from '../components/StatusBadge.jsx';
 import {
   getMetricsOverview, getMetricsByChannel, getMetricsByIntent,
   getResolutionRate, getMkApis, getPerformance, getTopEscalations,
+  getSatisfaction,
 } from '../services/api.js';
 
 const PERIODO_OPTS = [
@@ -19,6 +20,7 @@ const PERIODO_OPTS = [
 ];
 
 const COLORS = ['#0693e3', '#fcb900', '#ffffff', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+const STAR_COLORS = { 5: '#22c55e', 4: '#84cc16', 3: '#f59e0b', 2: '#f97316', 1: '#ef4444' };
 const TOOLTIP_STYLE = { background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 12, color: '#e2e8f0' };
 
 // ---- Gauge component (radial bar) ----
@@ -37,6 +39,58 @@ function GaugeChart({ value, meta, label }) {
         <span className="text-3xl font-bold text-slate-100">{pct}%</span>
         <span className="text-[10px] text-slate-500">Meta: {meta}%</span>
       </div>
+    </div>
+  );
+}
+
+// ---- Satisfaction Gauge (star-based) ----
+function SatisfactionGauge({ media, total }) {
+  const val = media ? Math.round((media / 5) * 100) : 0;
+  const color = media >= 4 ? '#22c55e' : media >= 3 ? '#f59e0b' : '#ef4444';
+  const data = [{ name: 'CSAT', value: val, fill: color }];
+
+  return (
+    <div className="relative">
+      <ResponsiveContainer width="100%" height={180}>
+        <RadialBarChart cx="50%" cy="80%" innerRadius="70%" outerRadius="100%" startAngle={180} endAngle={0} barSize={14} data={data}>
+          <RadialBar background={{ fill: '#1e293b' }} dataKey="value" cornerRadius={8} />
+        </RadialBarChart>
+      </ResponsiveContainer>
+      <div className="absolute inset-0 flex flex-col items-center justify-end pb-6">
+        <div className="flex items-center gap-1">
+          <Star size={18} className="text-yellow-400 fill-yellow-400" />
+          <span className="text-3xl font-bold text-slate-100">{media || '—'}</span>
+        </div>
+        <span className="text-[10px] text-slate-500">{total} avaliações</span>
+      </div>
+    </div>
+  );
+}
+
+// ---- Star Distribution Bars ----
+function StarDistribution({ notas }) {
+  if (!notas) return null;
+  const total = Object.values(notas).reduce((a, b) => a + b, 0) || 1;
+
+  return (
+    <div className="space-y-1.5">
+      {[5, 4, 3, 2, 1].map((n) => {
+        const count = notas[`nota_${n}`] || 0;
+        const pct = Math.round((count / total) * 100);
+        return (
+          <div key={n} className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 w-4 text-right">{n}</span>
+            <Star size={12} className="text-yellow-400 fill-yellow-400 shrink-0" />
+            <div className="flex-1 h-4 bg-slate-800 rounded overflow-hidden">
+              <div
+                className="h-full rounded transition-all duration-500"
+                style={{ width: `${Math.max(pct, 2)}%`, backgroundColor: STAR_COLORS[n] }}
+              />
+            </div>
+            <span className="text-[10px] text-slate-400 w-8 text-right">{count}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -87,6 +141,7 @@ export default function Metrics() {
   const [mkApis, setMkApis] = useState([]);
   const [performance, setPerformance] = useState([]);
   const [topEscalations, setTopEscalations] = useState([]);
+  const [satisfaction, setSatisfaction] = useState({});
 
   useEffect(() => {
     Promise.allSettled([
@@ -97,6 +152,7 @@ export default function Metrics() {
       getMkApis(periodo).then((r) => r.success && setMkApis(r.data)),
       getPerformance(periodo).then((r) => r.success && setPerformance(r.data)),
       getTopEscalations(periodo).then((r) => r.success && setTopEscalations(r.data)),
+      getSatisfaction(periodo).then((r) => r.success && setSatisfaction(r.data)),
     ]);
   }, [periodo]);
 
@@ -121,8 +177,8 @@ export default function Metrics() {
         </div>
       </div>
 
-      {/* LINHA 1 — Cards grandes + Gauge */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* LINHA 1 — Cards grandes + Gauge + Satisfação */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <MetricCard
           icon={Activity} label="Total atendimentos" color="white"
           value={overview.total_atendimentos ?? '—'}
@@ -144,7 +200,76 @@ export default function Metrics() {
           value={overview.total_escalonados ?? 0}
           sub={overview.total_escalonados > 0 ? 'Requer atenção' : 'Tudo em dia'}
         />
+
+        {/* Satisfação do Cliente */}
+        <div className="card">
+          <h3 className="text-xs text-slate-400 mb-1 flex items-center gap-1"><Star size={12} /> Satisfação do cliente</h3>
+          <SatisfactionGauge
+            media={overview.media_satisfacao ? Number(overview.media_satisfacao) : null}
+            total={overview.total_avaliacoes || 0}
+          />
+        </div>
       </div>
+
+      {/* LINHA 1.5 — CSAT Detalhado (se houver avaliações) */}
+      {satisfaction.total_avaliacoes > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Distribuição por nota */}
+          <div className="card">
+            <h3 className="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
+              <Star size={14} /> Distribuição de avaliações
+            </h3>
+            <StarDistribution notas={satisfaction.notas} />
+            <div className="mt-4 pt-3 border-t border-slate-700/50 flex items-center justify-between">
+              <span className="text-xs text-slate-400">Total de avaliações</span>
+              <span className="text-sm font-semibold text-slate-200">{satisfaction.total_avaliacoes}</span>
+            </div>
+          </div>
+
+          {/* NPS Score */}
+          <div className="card flex flex-col items-center justify-center">
+            <h3 className="text-xs text-slate-400 mb-3 flex items-center gap-1"><ThumbsUp size={12} /> NPS Score</h3>
+            <div className={`text-5xl font-bold ${
+              satisfaction.nps >= 50 ? 'text-green-400' :
+              satisfaction.nps >= 0 ? 'text-yellow-400' : 'text-red-400'
+            }`}>
+              {satisfaction.nps ?? '—'}
+            </div>
+            <span className="text-xs text-slate-500 mt-2">
+              {satisfaction.nps >= 50 ? 'Excelente' :
+               satisfaction.nps >= 0 ? 'Bom' : 'Precisa melhorar'}
+            </span>
+            <div className="flex gap-4 mt-4 text-[10px]">
+              <div className="text-center">
+                <span className="block text-green-400 font-semibold">{satisfaction.notas?.nota_5 + satisfaction.notas?.nota_4 || 0}</span>
+                <span className="text-slate-500">Promotores</span>
+              </div>
+              <div className="text-center">
+                <span className="block text-yellow-400 font-semibold">{satisfaction.notas?.nota_3 || 0}</span>
+                <span className="text-slate-500">Neutros</span>
+              </div>
+              <div className="text-center">
+                <span className="block text-red-400 font-semibold">{(satisfaction.notas?.nota_2 || 0) + (satisfaction.notas?.nota_1 || 0)}</span>
+                <span className="text-slate-500">Detratores</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Satisfação por dia */}
+          <div className="card">
+            <h3 className="text-sm font-semibold text-slate-300 mb-4">Satisfação por dia</h3>
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={satisfaction.por_dia || []}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <XAxis dataKey="dia" tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={(v) => v?.slice(5)} />
+                <YAxis domain={[0, 5]} tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} />
+                <Line type="monotone" dataKey="media" stroke="#22c55e" strokeWidth={2} dot={{ r: 3, fill: '#22c55e' }} name="Média" />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
 
       {/* LINHA 2 — Atendimentos por dia + Pizza por canal */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

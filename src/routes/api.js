@@ -203,6 +203,21 @@ router.post('/api/sessions/:id/close', async (req, res) => {
 
     emit(EVENTS.SESSAO_ENCERRADA, { session_id: id, motivo: 'finalizada_manual' });
 
+    // Gerar resumo IA em background
+    sessionService.generateAndSaveSummary(id, session).catch(() => {});
+
+    // Enviar pesquisa CSAT se sessão tinha cliente WhatsApp
+    if (session.canal === 'whatsapp' && session.telefone) {
+      const csatMsg = `Obrigado por entrar em contato com a *Conectiva Internet*! 😊\n\n*Como você avalia nosso atendimento?*\nResponda de *1* (péssimo) a *5* (excelente) 💙`;
+      try {
+        await sendText(session.telefone, csatMsg);
+        await logger.saveMessage({ session_id: id, direcao: 'saida', conteudo: csatMsg, canal: 'whatsapp' });
+        await sessionService.startCSAT(id);
+      } catch (csatErr) {
+        console.error('[api] Erro ao enviar CSAT:', csatErr.message);
+      }
+    }
+
     res.json({ success: true, data: updated, message: 'Sessão finalizada.' });
   } catch (err) {
     console.error('[api] POST /sessions/:id/close erro:', err.message);

@@ -148,6 +148,16 @@ export function requireAuth(req, res, next) {
 }
 
 /**
+ * Middleware de autorização — exige role 'admin'.
+ */
+export function requireAdmin(req, res, next) {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ success: false, error: 'Acesso restrito a administradores' });
+  }
+  next();
+}
+
+/**
  * Middleware opcional — loga a tentativa mas não bloqueia.
  * Útil para ter o user no req sem obrigar login.
  */

@@ -10,7 +10,8 @@ import { requireAuth } from '../middleware/security.js';
 const router = Router();
 
 // ── Autenticação obrigatória para todas as rotas de API ──
-router.use(requireAuth);
+// Escopo /api para não interceptar rotas SPA (ex: /session/:id, /metrics)
+router.use('/api', requireAuth);
 
 // ============================================================
 // SESSIONS

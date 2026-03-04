@@ -59,4 +59,11 @@ export const getPerformance = (periodo) => api.get('/api/metrics/performance', {
 export const getTopEscalations = (periodo) => api.get('/api/metrics/top-escalations', { params: { periodo } }).then((r) => r.data);
 export const getSatisfaction = (periodo) => api.get('/api/metrics/satisfaction', { params: { periodo } }).then((r) => r.data);
 
+// Settings
+export const getSettings = (categoria) => api.get('/api/settings', { params: categoria ? { categoria } : {} }).then((r) => r.data);
+export const updateSetting = (cat, key, data) => api.put(`/api/settings/${cat}/${key}`, data).then((r) => r.data);
+export const deleteSetting = (cat, key, permanent) => api.delete(`/api/settings/${cat}/${key}`, { params: permanent ? { permanent: 'true' } : {} }).then((r) => r.data);
+export const addPlan = (data) => api.post('/api/settings/planos', data).then((r) => r.data);
+export const addStore = (data) => api.post('/api/settings/lojas', data).then((r) => r.data);
+
 export default api;

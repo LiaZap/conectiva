@@ -14,7 +14,9 @@ import webhookRouter from './routes/webhook.js';
 import apiRouter from './routes/api.js';
 import dashboardRouter from './routes/dashboard.js';
 import authRouter from './routes/auth.js';
+import settingsRouter from './routes/settings.js';
 import { expireStale } from './services/session.js';
+import { loadAll as loadSettings } from './services/settings.js';
 import {
   helmetMiddleware,
   generalLimiter,
@@ -77,6 +79,7 @@ app.use(authRouter);
 app.use(webhookRouter);
 app.use(apiRouter);
 app.use(dashboardRouter);
+app.use(settingsRouter);
 
 // Health check
 const redis = new Redis(config.redisUrl, {
@@ -147,6 +150,49 @@ async function runMigrations() {
     await query('ALTER TABLE sessions ADD COLUMN IF NOT EXISTS reincidencia BOOLEAN DEFAULT false');
     await query('ALTER TABLE sessions ADD COLUMN IF NOT EXISTS total_contatos_anteriores INTEGER DEFAULT 0');
     console.log('[migration] Migrações v3 aplicadas (Reincidência)');
+
+    // v4: Tabela de configurações dinâmicas
+    await query(`CREATE TABLE IF NOT EXISTS settings (
+      id SERIAL PRIMARY KEY,
+      categoria VARCHAR(50) NOT NULL,
+      chave VARCHAR(100) NOT NULL,
+      valor JSONB NOT NULL DEFAULT '{}',
+      descricao TEXT,
+      ordem INTEGER DEFAULT 0,
+      ativo BOOLEAN NOT NULL DEFAULT TRUE,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_by VARCHAR(100),
+      UNIQUE(categoria, chave)
+    )`);
+
+    // Seed: inserir dados padrão se tabela vazia
+    const { rows: countRows } = await query('SELECT COUNT(*) FROM settings');
+    if (parseInt(countRows[0].count) === 0) {
+      const seed = [
+        ['empresa', 'info_geral', JSON.stringify({ nome: 'Conectiva Internet', descricao: 'Provedor de internet por fibra óptica', total_clientes: '7 mil', total_empresas: '300+', km_fibra: '300+' }), 'Informações gerais da empresa', 1],
+        ['empresa', 'valores', JSON.stringify({ lista: ['Transparência', 'Segurança', 'Comprometimento', 'Respeito', 'Ética', 'Qualidade'] }), 'Valores da empresa', 2],
+        ['empresa', 'cobertura', JSON.stringify({ areas: ['Lagoa Santa', 'Matozinhos', 'Pedro Leopoldo', 'Capim Branco', 'Prudente de Morais', 'Funilândia', 'Contagem'] }), 'Áreas de cobertura', 3],
+        ['planos', 'plano_600_mega', JSON.stringify({ nome: '600 MEGA', velocidade: '600', preco: 99.90, cod_mk: 1326, beneficios: ['Lev Educa'], emoji: '📶', destaque: false }), 'Plano 600 Mega', 1],
+        ['planos', 'plano_800_mega', JSON.stringify({ nome: '800 MEGA', velocidade: '800', preco: 129.90, cod_mk: 1320, beneficios: ['Lev Educa', 'Deezer', 'Paramount+', 'Watch'], emoji: '📶', destaque: false }), 'Plano 800 Mega', 2],
+        ['planos', 'plano_1_giga', JSON.stringify({ nome: '1 GIGA', velocidade: '1000', preco: 139.90, cod_mk: 1327, beneficios: ['Lev Educa', 'Deezer', 'Paramount+', 'Watch'], emoji: '🚀', destaque: true }), 'Plano 1 Giga', 3],
+        ['lojas', 'loja_matozinhos', JSON.stringify({ cidade: 'Matozinhos', endereco: 'R. José Dias Corrêa, 87A — Centro', telefone: '(31) 3712-1294' }), 'Loja Matozinhos', 1],
+        ['lojas', 'loja_lagoa_santa', JSON.stringify({ cidade: 'Lagoa Santa', endereco: 'R. Aleomar Baleeiro, 462 — Centro', telefone: '(31) 3268-4691' }), 'Loja Lagoa Santa', 2],
+        ['lojas', 'loja_prudente', JSON.stringify({ cidade: 'Prudente de Morais', endereco: 'R. José de Souza, 83A — Centro', telefone: '' }), 'Loja Prudente de Morais', 3],
+        ['contatos', 'telefones', JSON.stringify({ lista: [{ cidade: 'Matozinhos', numero: '(31) 3712-1294' }, { cidade: 'Lagoa Santa', numero: '(31) 3268-4691' }] }), 'Telefones de contato', 1],
+        ['ia', 'personalidade', JSON.stringify({ nome_atendente: 'Ana', cargo: 'atendente', tom: 'natural, leve, empático e acolhedor', usar_emojis: true, max_emojis_por_msg: 3 }), 'Personalidade da IA', 1],
+        ['ia', 'servicos_extras', JSON.stringify({ lista: ['Telefonia Móvel: Planos através de parcerias com Vivo e TIM', 'Combos: Internet + Telefonia com desconto', 'App Conectiva: Para consultar 2ª via de boleto e suporte rápido'] }), 'Outros serviços oferecidos', 2],
+        ['regras', 'vencimentos', JSON.stringify({ dias_disponiveis: [10, 15, 20, 30] }), 'Dias de vencimento disponíveis', 1],
+        ['regras', 'sessao', JSON.stringify({ timeout_minutos: 30 }), 'Regras de sessão', 2],
+      ];
+      for (const [cat, chave, valor, desc, ordem] of seed) {
+        await query(
+          'INSERT INTO settings (categoria, chave, valor, descricao, ordem) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING',
+          [cat, chave, valor, desc, ordem]
+        );
+      }
+      console.log('[migration] Seed de configurações inserido');
+    }
+    console.log('[migration] Migrações v4 aplicadas (Settings)');
   } catch (err) {
     console.error('[migration] Erro nas migrações:', err.message);
   }
@@ -159,6 +205,7 @@ server.listen(config.port, async () => {
   console.log(`  🔒 Segurança: helmet + rate-limit + sanitização`);
   console.log(`  🌐 Ambiente: ${config.nodeEnv}\n`);
   await runMigrations();
+  await loadSettings();
 });
 
 // Shutdown graceful

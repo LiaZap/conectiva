@@ -9,6 +9,7 @@ import SessionDetail from './pages/SessionDetail.jsx';
 import Metrics from './pages/Metrics.jsx';
 import Escalations from './pages/Escalations.jsx';
 import Login from './pages/Login.jsx';
+import SettingsPage from './pages/Settings.jsx';
 
 const NAV = [
   { to: '/', icon: Radio, label: 'Monitor ao Vivo' },
@@ -130,7 +131,7 @@ export default function App() {
           <Route path="/session/:id" element={<SessionDetail />} />
           <Route path="/metrics" element={<Metrics />} />
           <Route path="/escalations" element={<Escalations />} />
-          <Route path="/settings" element={<div className="p-6 text-slate-400">Configurações — em breve</div>} />
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

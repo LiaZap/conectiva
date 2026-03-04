@@ -5,7 +5,8 @@ import { requireAuth } from '../middleware/security.js';
 const router = Router();
 
 // ── Autenticação obrigatória para todas as rotas de métricas ──
-router.use(requireAuth);
+// Escopo /api para não interceptar rotas SPA no F5/refresh
+router.use('/api', requireAuth);
 
 /**
  * Converte o parâmetro ?periodo= em cláusula SQL de data.

@@ -410,8 +410,45 @@ async function processMessage(canal, body, replyFn) {
       }
     }
 
-    // NOVO_CONTRATO — encadear: verificar cobertura → criar pessoa → criar contrato
+    // NOVO_CONTRATO — encadear: consultar cliente → verificar cobertura → criar pessoa → criar contrato
     if (acaoMK === 'NOVO_CONTRATO') {
+      // 0. Consultar cliente automaticamente se tem CPF mas não tem cd_cliente
+      if (!session.cd_cliente_mk && session.cpf_cnpj) {
+        console.log(`[webhook] NOVO_CONTRATO: consultando cliente pelo CPF ${session.cpf_cnpj}...`);
+        try {
+          const consultaResult = await n8nExecute({
+            action: 'CONSULTAR_CLIENTE', params: { doc: session.cpf_cnpj }, session_id: sid,
+          });
+          if (consultaResult.success && consultaResult.data) {
+            const cData = consultaResult.data;
+            const cdCliente = cData.CodigoCliente || cData.cd_cliente || cData.codigo_cliente
+                           || cData.CdCliente || cData.Codigo;
+            const nomeCliente = cData.NomeCliente || cData.nome_cliente || cData.RazaoSocial || cData.Nome;
+            if (cdCliente) {
+              mkParams.cd_cliente = String(cdCliente);
+              await sessionService.update(sid, {
+                cd_cliente_mk: String(cdCliente),
+                ...(nomeCliente && !session.nome_cliente ? { nome_cliente: nomeCliente } : {}),
+              });
+              session.cd_cliente_mk = String(cdCliente);
+              if (nomeCliente) session.nome_cliente = nomeCliente;
+              console.log(`[webhook] NOVO_CONTRATO: cliente encontrado cd_cliente=${cdCliente}`);
+            } else {
+              console.log(`[webhook] NOVO_CONTRATO: CPF não encontrado no MK — vai criar pessoa`);
+            }
+          }
+          await logger.saveAction({
+            session_id: sid, interaction_id: null,
+            acao: 'CONSULTAR_CLIENTE', descricao: 'Consulta automática antes do contrato',
+            status: consultaResult.success ? 'sucesso' : 'erro',
+            dados_entrada: { doc: session.cpf_cnpj },
+            dados_saida: consultaResult.data, tempo_ms: consultaResult.tempo_ms,
+          });
+        } catch (err) {
+          console.error('[webhook] Erro ao consultar cliente antes do contrato:', err.message);
+        }
+      }
+
       // 1. Verificar cobertura automaticamente (se ainda não foi feito)
       if (mkParams.endereco || session.cpf_cnpj) {
         try {

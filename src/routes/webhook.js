@@ -703,6 +703,41 @@ async function processMessage(canal, body, replyFn) {
       }
     }
 
+    // ── Encadeamento: após CONSULTAR_CLIENTE com sucesso, executar ação real da intenção ──
+    // Se acabamos de identificar o cliente (CONSULTAR_CLIENTE), encadear a ação que o cliente realmente quer
+    if (acaoMK === 'CONSULTAR_CLIENTE' && session.cd_cliente_mk && mkResult?.success) {
+      const INTENCAO_CHAIN = {
+        'SEGUNDA_VIA': 'FATURAS_PENDENTES',
+        'FATURAS': 'FATURAS_PENDENTES',
+        'DESBLOQUEIO': 'CONEXOES_CLIENTE',
+        'SUPORTE': 'CONEXOES_CLIENTE',
+        'CONTRATO': 'CONTRATOS_CLIENTE',
+      };
+      const acaoChain = INTENCAO_CHAIN[intencao];
+      if (acaoChain) {
+        console.log(`[webhook] Encadeando: CONSULTAR_CLIENTE → ${acaoChain} (intenção: ${intencao})`);
+        const chainParams = { ...paramsMK, cd_cliente: session.cd_cliente_mk, doc: session.cpf_cnpj };
+        const chainResult = await n8nExecute({ action: acaoChain, params: chainParams, session_id: sid });
+
+        if (chainResult.success) {
+          // Substituir mkResult pelo resultado da ação encadeada
+          mkResult = chainResult;
+          acaoMK = acaoChain;
+          tempo_mk_ms += chainResult.tempo_ms;
+          console.log(`[webhook] ${acaoChain} encadeado com sucesso (${chainResult.tempo_ms}ms)`);
+
+          await logger.saveAction({
+            session_id: sid, interaction_id: null,
+            acao: acaoChain, descricao: `Ação encadeada após CONSULTAR_CLIENTE (intenção: ${intencao})`,
+            status: 'sucesso', dados_entrada: chainParams,
+            dados_saida: chainResult.data, tempo_ms: chainResult.tempo_ms,
+          });
+        } else {
+          console.error(`[webhook] ${acaoChain} encadeado falhou:`, chainResult.error);
+        }
+      }
+    }
+
     // Se CONSULTAR_CLIENTE não encontrou o cliente
     if (acaoMK === 'CONSULTAR_CLIENTE' && mkResult?.success && mkResult.data && !session.cd_cliente_mk) {
       console.log(`[webhook] CONSULTAR_CLIENTE: cliente não encontrado para CPF ${session.cpf_cnpj}`);

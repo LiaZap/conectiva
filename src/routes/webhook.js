@@ -204,7 +204,7 @@ async function processMessage(canal, body, replyFn) {
   // 5. Buscar histórico + classificar com IA
   const historico = await sessionService.getHistory(sid);
   const classification = await classify(message, historico);
-  const { intencao, confianca, acaoMK, paramsMK, respostaSugerida, precisaCPF, _tempoMs: tempo_ia_ms } = classification;
+  let { intencao, confianca, acaoMK, paramsMK, respostaSugerida, precisaCPF, _tempoMs: tempo_ia_ms } = classification;
 
   // 6. Emitir ia_classificou
   emit(EVENTS.IA_CLASSIFICOU, { session_id: sid, intencao, confianca, acaoMK });
@@ -246,6 +246,32 @@ async function processMessage(canal, body, replyFn) {
     emitToSession(sid, EVENTS.RESPOSTA_ENVIADA, { resposta: pedidoCPF, direcao: 'saida' });
     console.log(`[webhook] CPF necessário para ${acaoMK || intencao}, aguardando cliente`);
     return;
+  }
+
+  // 7.5. Auto-correção: se a IA retornou acaoMK=null mas a sessão JÁ TEM CPF,
+  // atribuir ação automaticamente baseado na intenção. Sem isso, o sistema
+  // ficaria pedindo CPF em loop quando a IA não seta acaoMK corretamente.
+  if (!acaoMK && session.cpf_cnpj) {
+    const INTENCAO_TO_ACAO = {
+      'SEGUNDA_VIA': 'FATURAS_PENDENTES',
+      'FATURAS': 'FATURAS_PENDENTES',
+      'DESBLOQUEIO': 'CONEXOES_CLIENTE',
+      'SUPORTE': 'CONEXOES_CLIENTE',
+      'CONTRATO': 'CONTRATOS_CLIENTE',
+      'CADASTRO': 'CONSULTAR_CADASTRO',
+    };
+    const acaoAuto = INTENCAO_TO_ACAO[intencao];
+    if (acaoAuto && !session.cd_cliente_mk) {
+      // Tem CPF mas não tem cd_cliente → consultar cliente primeiro
+      acaoMK = 'CONSULTAR_CLIENTE';
+      paramsMK = { ...paramsMK, doc: session.cpf_cnpj };
+      console.log(`[webhook] Auto-correção: CPF na sessão mas sem cd_cliente — usando CONSULTAR_CLIENTE para ${intencao}`);
+    } else if (acaoAuto && session.cd_cliente_mk) {
+      // Tem CPF E cd_cliente → usar ação direta da intenção
+      acaoMK = acaoAuto;
+      paramsMK = { ...paramsMK, cd_cliente: session.cd_cliente_mk };
+      console.log(`[webhook] Auto-correção: CPF+cd_cliente existem, IA não setou ação — usando ${acaoAuto} para ${intencao}`);
+    }
   }
 
   // 8. Se tem ação MK, chamar n8n

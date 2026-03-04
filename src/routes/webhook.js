@@ -17,22 +17,26 @@ import { emit, emitToSession, EVENTS } from '../websocket/events.js';
 const router = Router();
 
 // ── Helper: extrair dados do cliente da resposta do MK (WSMKConsultaDoc) ──
-// A resposta pode vir em vários formatos:
-// - { CodigoCliente: X, NomeCliente: Y, ... } (direto no raiz)
-// - { Outros: [{ CodigoPessoa: X, Nome: Y, ... }] } (dentro de array Outros)
-// - { CodigoCliente: X, Outros: [...] } (misto)
+// A resposta do n8n vem aninhada: { success, data: { Outros: [{ CodigoPessoa, ... }] }, endpoint }
+// Ou direto: { CodigoCliente, NomeCliente, ... }
+// Ou misto: { Outros: [{ CodigoPessoa, ... }] }
 function extractClientFromMK(data) {
-  if (!data) return { cdCliente: null, nomeCliente: null, rawData: data };
+  if (!data) return { cdCliente: null, nomeCliente: null };
 
-  // Tentar extrair do nível raiz primeiro
-  let cdCliente = data.CodigoCliente || data.cd_cliente || data.codigo_cliente
-                || data.CdCliente || data.Codigo || data.CodigoPessoa || data.codigo_pessoa;
-  let nomeCliente = data.NomeCliente || data.nome_cliente || data.RazaoSocial
-                  || data.Nome || data.nome;
+  // Se o n8n wrapou em { success, data: {...} }, desembrulhar
+  const mkData = data.data && (data.data.Outros || data.data.CodigoCliente || data.data.CodigoPessoa)
+    ? data.data
+    : data;
 
-  // Se não encontrou no raiz, procurar dentro de "Outros" (array do MK)
-  if (!cdCliente && data.Outros) {
-    const lista = Array.isArray(data.Outros) ? data.Outros : [data.Outros];
+  // Tentar extrair do nível raiz
+  let cdCliente = mkData.CodigoCliente || mkData.cd_cliente || mkData.codigo_cliente
+                || mkData.CdCliente || mkData.Codigo || mkData.CodigoPessoa || mkData.codigo_pessoa;
+  let nomeCliente = mkData.NomeCliente || mkData.nome_cliente || mkData.RazaoSocial
+                  || mkData.Nome || mkData.nome;
+
+  // Se não encontrou no raiz, procurar dentro de "Outros" (array do MK WSMKConsultaDoc)
+  if (!cdCliente && mkData.Outros) {
+    const lista = Array.isArray(mkData.Outros) ? mkData.Outros : [mkData.Outros];
     if (lista.length > 0) {
       const primeiro = lista[0];
       cdCliente = primeiro.CodigoCliente || primeiro.CodigoPessoa || primeiro.Codigo
@@ -42,7 +46,7 @@ function extractClientFromMK(data) {
     }
   }
 
-  return { cdCliente: cdCliente ? String(cdCliente) : null, nomeCliente: nomeCliente || null, rawData: data };
+  return { cdCliente: cdCliente ? String(cdCliente) : null, nomeCliente: nomeCliente || null };
 }
 
 // ── Mensagem de pesquisa de satisfação (CSAT) ──

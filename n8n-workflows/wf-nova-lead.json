@@ -39,7 +39,7 @@
         "queryParameters": {
           "parameters": [
             { "name": "sys", "value": "MK0" },
-            { "name": "token", "value": "={{ $node['Redis GET Token'].json.token || $node['Redis GET Token'].json }}" },
+            { "name": "token", "value": "={{ $node['Redis GET Token'].json.propertyName }}" },
             { "name": "cd_cliente", "value": "={{ $node['Webhook Trigger'].json.body.cd_cliente || '' }}" },
             { "name": "nome", "value": "={{ $node['Webhook Trigger'].json.body.nome || '' }}" },
             { "name": "telefone", "value": "={{ $node['Webhook Trigger'].json.body.telefone || '' }}" },

@@ -39,7 +39,7 @@
         "queryParameters": {
           "parameters": [
             { "name": "sys", "value": "MK0" },
-            { "name": "token", "value": "={{ $node['Redis GET Token'].json.token || $node['Redis GET Token'].json }}" },
+            { "name": "token", "value": "={{ $node['Redis GET Token'].json.propertyName }}" },
             { "name": "Documento", "value": "={{ $node['Webhook Trigger'].json.body.doc || $node['Webhook Trigger'].json.body.Documento || '' }}" },
             { "name": "CodigoFatura", "value": "={{ $node['Webhook Trigger'].json.body.cd_fatura || $node['Webhook Trigger'].json.body.CodigoFatura || '' }}" },
             { "name": "CodigoCliente", "value": "={{ $node['Webhook Trigger'].json.body.cd_cliente || $node['Webhook Trigger'].json.body.CodigoCliente || '' }}" }

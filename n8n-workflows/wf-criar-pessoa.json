@@ -34,28 +34,17 @@
     },
     {
       "parameters": {
-        "url": "https://mk.conectivainfor.com.br/mk/WSMKNovaPessoa.rule",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            { "name": "sys", "value": "MK0" },
-            { "name": "token", "value": "={{ $node['Redis GET Token'].json.token || $node['Redis GET Token'].json }}" },
-            { "name": "doc", "value": "={{ $node['Webhook Trigger'].json.body.doc }}" },
-            { "name": "nome", "value": "={{ $node['Webhook Trigger'].json.body.nome }}" },
-            { "name": "cep", "value": "={{ $node['Webhook Trigger'].json.body.cep || '' }}" },
-            { "name": "cd_uf", "value": "={{ $node['Webhook Trigger'].json.body.cd_uf || '' }}" },
-            { "name": "cd_cidade", "value": "={{ $node['Webhook Trigger'].json.body.cd_cidade || '' }}" },
-            { "name": "cd_bairro", "value": "={{ $node['Webhook Trigger'].json.body.cd_bairro || '' }}" },
-            { "name": "cd_logradouro", "value": "={{ $node['Webhook Trigger'].json.body.cd_logradouro || '' }}" },
-            { "name": "numero", "value": "={{ $node['Webhook Trigger'].json.body.numero || '' }}" },
-            { "name": "complemento", "value": "={{ $node['Webhook Trigger'].json.body.complemento || '' }}" },
-            { "name": "email", "value": "={{ $node['Webhook Trigger'].json.body.email || '' }}" },
-            { "name": "fone", "value": "={{ $node['Webhook Trigger'].json.body.fone || '' }}" },
-            { "name": "nascimento", "value": "={{ $node['Webhook Trigger'].json.body.nascimento || '' }}" },
-            { "name": "nome_mae", "value": "={{ $node['Webhook Trigger'].json.body.nome_mae || '' }}" },
-            { "name": "rg", "value": "={{ $node['Webhook Trigger'].json.body.rg || '' }}" }
-          ]
-        },
+        "jsCode": "const body = $('Webhook Trigger').first().json.body || {};\nconst token = $('Redis GET Token').first().json.propertyName;\n\n// Campos obrigatórios\nconst params = {\n  sys: 'MK0',\n  token: token,\n  doc: body.doc || '',\n  nome: body.nome || ''\n};\n\n// Campos opcionais — só incluir se não estiverem vazios\nconst optional = [\n  'cep', 'cd_uf', 'cd_cidade', 'cd_bairro', 'cd_logradouro',\n  'numero', 'complemento', 'email', 'fone', 'nascimento', 'nome_mae', 'rg'\n];\n\nfor (const field of optional) {\n  const val = body[field];\n  if (val && String(val).trim() !== '') {\n    params[field] = String(val).trim();\n  }\n}\n\n// Montar URL com query string\nconst qs = Object.entries(params)\n  .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)\n  .join('&');\n\nconst url = `https://mk.conectivainfor.com.br/mk/WSMKNovaPessoa.rule?${qs}`;\n\nreturn [{ json: { url, params_enviados: Object.keys(params) } }];"
+      },
+      "id": "prepare-params",
+      "name": "Preparar Parametros",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
         "options": {
           "response": {
             "response": {
@@ -69,17 +58,17 @@
       "name": "HTTP - NovaPessoa",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [700, 300]
+      "position": [920, 300]
     },
     {
       "parameters": {
-        "jsCode": "const mkResponse = $input.first().json;\nconst body = $('Webhook Trigger').first().json.body || {};\n\nconst success = mkResponse.status !== 'ERRO';\n\nreturn [{\n  json: {\n    success,\n    data: mkResponse,\n    endpoint: 'WSMKNovaPessoa',\n    session_id: body.session_id || null\n  }\n}];"
+        "jsCode": "const mkResponse = $input.first().json;\nconst body = $('Webhook Trigger').first().json.body || {};\nconst paramsInfo = $('Preparar Parametros').first().json;\n\nconst success = mkResponse.status !== 'ERRO';\n\nreturn [{\n  json: {\n    success,\n    data: mkResponse,\n    params_enviados: paramsInfo.params_enviados,\n    endpoint: 'WSMKNovaPessoa',\n    session_id: body.session_id || null\n  }\n}];"
       },
       "id": "format-response",
       "name": "Formatar Resposta",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [920, 300]
+      "position": [1140, 300]
     },
     {
       "parameters": {
@@ -91,7 +80,7 @@
       "name": "Respond to Webhook",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [1140, 300]
+      "position": [1360, 300]
     }
   ],
   "connections": {
@@ -99,6 +88,9 @@
       "main": [[{ "node": "Redis GET Token", "type": "main", "index": 0 }]]
     },
     "Redis GET Token": {
+      "main": [[{ "node": "Preparar Parametros", "type": "main", "index": 0 }]]
+    },
+    "Preparar Parametros": {
       "main": [[{ "node": "HTTP - NovaPessoa", "type": "main", "index": 0 }]]
     },
     "HTTP - NovaPessoa": {

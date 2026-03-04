@@ -410,49 +410,102 @@ async function processMessage(canal, body, replyFn) {
       }
     }
 
-    // NOVO_CONTRATO — se não tem cd_cliente mas tem CPF, criar pessoa automaticamente primeiro
-    if (acaoMK === 'NOVO_CONTRATO' && !session.cd_cliente_mk && session.cpf_cnpj) {
-      console.log(`[webhook] NOVO_CONTRATO sem cd_cliente — tentando CRIAR_PESSOA automaticamente...`);
-      try {
-        let foneReal = telefone.replace(/\D/g, '');
-        if (foneReal.startsWith('55') && foneReal.length >= 12) foneReal = foneReal.substring(2);
+    // NOVO_CONTRATO — encadear: verificar cobertura → criar pessoa → criar contrato
+    if (acaoMK === 'NOVO_CONTRATO') {
+      // 1. Verificar cobertura automaticamente (se ainda não foi feito)
+      if (mkParams.endereco || session.cpf_cnpj) {
+        try {
+          const { rows: cobRows } = await query(
+            `SELECT dados_saida FROM ai_actions_log
+             WHERE session_id = $1 AND acao = 'CONSULTAR_COBERTURA' AND status = 'sucesso'
+             ORDER BY created_at DESC LIMIT 1`,
+            [sid]
+          );
+          if (cobRows.length > 0) {
+            const cached = cobRows[0].dados_saida;
+            const temCobertura = cached.data?.tem_cobertura ?? cached.tem_cobertura;
+            if (!temCobertura) {
+              console.log('[webhook] NOVO_CONTRATO bloqueado — sem cobertura na região');
+              mkResult = {
+                success: false,
+                data: { _semCobertura: true, mensagem: 'Sem cobertura na região do cliente' },
+                tempo_ms: 0, endpoint: 'cobertura-check',
+              };
+            } else {
+              console.log('[webhook] Cobertura confirmada — prosseguindo com contrato');
+            }
+          }
+          // Se não tem cobertura verificada, prossegue mesmo assim (sistema vai tentar)
+        } catch (err) {
+          console.error('[webhook] Erro ao verificar cobertura antes do contrato:', err.message);
+        }
+      }
 
-        const criarParams = {
-          doc: session.cpf_cnpj,
-          nome: mkParams.nome || session.nome_cliente || pushName || '',
-          fone: foneReal,
-          email: mkParams.email || '',
-          cep: mkParams.cep || '',
-        };
+      // 2. Criar pessoa automaticamente se não tem cd_cliente
+      if (!mkResult && !session.cd_cliente_mk && session.cpf_cnpj) {
+        console.log(`[webhook] NOVO_CONTRATO sem cd_cliente — criando pessoa automaticamente...`);
+        try {
+          let foneReal = telefone.replace(/\D/g, '');
+          if (foneReal.startsWith('55') && foneReal.length >= 12) foneReal = foneReal.substring(2);
 
-        const criarResult = await n8nExecute({ action: 'CRIAR_PESSOA', params: criarParams, session_id: sid });
+          const criarParams = {
+            doc: session.cpf_cnpj,
+            nome: mkParams.nome || session.nome_cliente || pushName || '',
+            fone: foneReal,
+            email: mkParams.email || '',
+            cep: mkParams.cep || '',
+          };
 
-        if (criarResult.success && criarResult.data) {
-          const cdCliente = criarResult.data.CodigoCliente || criarResult.data.cd_cliente || criarResult.data.Codigo;
-          if (cdCliente) {
-            await sessionService.update(sid, { cd_cliente_mk: String(cdCliente) });
-            session.cd_cliente_mk = String(cdCliente);
-            mkParams.cd_cliente = String(cdCliente);
-            console.log(`[webhook] Pessoa criada automaticamente: cd_cliente=${cdCliente}`);
+          const criarResult = await n8nExecute({ action: 'CRIAR_PESSOA', params: criarParams, session_id: sid });
 
+          if (criarResult.success && criarResult.data) {
+            const cdCliente = criarResult.data.CodigoCliente || criarResult.data.cd_cliente || criarResult.data.Codigo;
+            if (cdCliente) {
+              await sessionService.update(sid, { cd_cliente_mk: String(cdCliente) });
+              session.cd_cliente_mk = String(cdCliente);
+              mkParams.cd_cliente = String(cdCliente);
+              console.log(`[webhook] Pessoa criada automaticamente: cd_cliente=${cdCliente}`);
+
+              await logger.saveAction({
+                session_id: sid, interaction_id: null,
+                acao: 'CRIAR_PESSOA', descricao: 'Cadastro automático antes do contrato',
+                status: 'sucesso', dados_entrada: criarParams,
+                dados_saida: criarResult.data, tempo_ms: criarResult.tempo_ms,
+              });
+            }
+          } else {
+            console.error('[webhook] Falha ao criar pessoa:', criarResult.data);
             await logger.saveAction({
               session_id: sid, interaction_id: null,
-              acao: 'CRIAR_PESSOA', descricao: 'Cadastro automático antes do contrato',
-              status: 'sucesso', dados_entrada: criarParams,
+              acao: 'CRIAR_PESSOA', descricao: 'Cadastro automático falhou',
+              status: 'erro', dados_entrada: criarParams,
               dados_saida: criarResult.data, tempo_ms: criarResult.tempo_ms,
             });
+            // Bloquear contrato — sem cadastro não dá pra criar
+            mkResult = {
+              success: false,
+              data: { _erroCadastro: true, mensagem: 'Não foi possível criar o cadastro no sistema. Verifique os dados e tente novamente.' },
+              tempo_ms: criarResult.tempo_ms, endpoint: 'CRIAR_PESSOA',
+            };
           }
-        } else {
-          console.error('[webhook] Falha ao criar pessoa automaticamente:', criarResult.data);
-          await logger.saveAction({
-            session_id: sid, interaction_id: null,
-            acao: 'CRIAR_PESSOA', descricao: 'Cadastro automático falhou',
-            status: 'erro', dados_entrada: criarParams,
-            dados_saida: criarResult.data, tempo_ms: criarResult.tempo_ms,
-          });
+        } catch (err) {
+          console.error('[webhook] Erro ao criar pessoa antes do contrato:', err.message);
+          mkResult = {
+            success: false,
+            data: { _erroCadastro: true, mensagem: 'Erro ao criar cadastro no sistema.' },
+            tempo_ms: 0, endpoint: 'CRIAR_PESSOA',
+          };
         }
-      } catch (err) {
-        console.error('[webhook] Erro ao criar pessoa antes do contrato:', err.message);
+      }
+
+      // 3. Se ainda não tem cd_cliente após tentativa de criar pessoa, bloquear contrato
+      if (!mkResult && !session.cd_cliente_mk) {
+        console.log('[webhook] NOVO_CONTRATO bloqueado — sem cd_cliente mesmo após tentativa de cadastro');
+        mkResult = {
+          success: false,
+          data: { _semCadastro: true, mensagem: 'É necessário ter o cadastro completo antes de criar o contrato.' },
+          tempo_ms: 0, endpoint: 'NOVO_CONTRATO',
+        };
       }
     }
 
@@ -861,6 +914,12 @@ async function processMessage(canal, body, replyFn) {
     if (pessoaCriada) enrichedMkData._pessoaCriada = pessoaCriada;
     if (leadCriada) enrichedMkData._leadCriada = leadCriada;
     resposta = await formatResponse({ intencao, mkData: enrichedMkData, session, historico });
+  } else if (acaoMK && !mkResult?.success && mkResult?.data?._erroCadastro) {
+    // Erro específico ao criar cadastro — usar IA para formatar resposta
+    resposta = await formatResponse({ intencao, mkData: mkResult.data, session, historico });
+  } else if (acaoMK && !mkResult?.success && mkResult?.data?._semCobertura) {
+    // Sem cobertura na região — usar IA para formatar resposta
+    resposta = await formatResponse({ intencao, mkData: { tem_cobertura: false, ...mkResult.data }, session, historico });
   } else if (acaoMK && !mkResult?.success) {
     resposta = 'Poxa, deu um probleminha pra consultar seus dados no sistema 😔 Vou te passar pra um colega da equipe resolver isso pra você! Só um minutinho 🙏';
     // Forçar escalonamento quando MK falha

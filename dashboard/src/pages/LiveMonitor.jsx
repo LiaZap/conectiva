@@ -23,14 +23,17 @@ export default function LiveMonitor() {
   const [confirmAction, setConfirmAction] = useState(null);
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
+  const [filterReincidencia, setFilterReincidencia] = useState(false);
   const chatEndRef = useRef(null);
   const inputRef = useRef(null);
 
   // Load sessions + overview
   const loadSessions = useCallback(() => {
-    getSessions({ limit: 50 }).then((r) => r.success && setSessions(r.data)).catch(() => {});
+    const params = { limit: 50 };
+    if (filterReincidencia) params.reincidencia = true;
+    getSessions(params).then((r) => r.success && setSessions(r.data)).catch(() => {});
     getMetricsOverview('hoje').then((r) => r.success && setOverview(r.data)).catch(() => {});
-  }, []);
+  }, [filterReincidencia]);
 
   useEffect(() => {
     loadSessions();
@@ -227,8 +230,20 @@ export default function LiveMonitor() {
       <div className="flex flex-1 overflow-hidden">
         {/* LEFT — Session list */}
         <div className="w-80 shrink-0 border-r border-slate-700 overflow-y-auto">
-          <div className="p-3 border-b border-slate-700">
+          <div className="p-3 border-b border-slate-700 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-white">Sessões</h2>
+            <button
+              onClick={() => setFilterReincidencia((prev) => !prev)}
+              className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-full transition-colors ${
+                filterReincidencia
+                  ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40'
+                  : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
+              }`}
+              title="Filtrar sessões reincidentes"
+            >
+              <RefreshCw size={10} />
+              Reincidentes
+            </button>
           </div>
           <div className="space-y-1 p-2">
             {sessions.map((s) => (

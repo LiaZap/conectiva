@@ -58,6 +58,7 @@ export const getMkApis = (periodo) => api.get('/api/metrics/mk-apis', { params: 
 export const getPerformance = (periodo) => api.get('/api/metrics/performance', { params: { periodo } }).then((r) => r.data);
 export const getTopEscalations = (periodo) => api.get('/api/metrics/top-escalations', { params: { periodo } }).then((r) => r.data);
 export const getSatisfaction = (periodo) => api.get('/api/metrics/satisfaction', { params: { periodo } }).then((r) => r.data);
+export const getReincidencia = (periodo) => api.get('/api/metrics/reincidencia', { params: { periodo } }).then((r) => r.data);
 
 // Settings
 export const getSettings = (categoria) => api.get('/api/settings', { params: categoria ? { categoria } : {} }).then((r) => r.data);

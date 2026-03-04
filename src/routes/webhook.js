@@ -213,9 +213,12 @@ async function processMessage(canal, body, replyFn) {
     sendPresence(telefone, 'composing').catch(() => {});
   }
 
-  // 5. Buscar histórico + classificar com IA
-  const historico = await sessionService.getHistory(sid);
-  const classification = await classify(message, historico);
+  // 5. Buscar histórico + sessões anteriores (reincidência) + classificar com IA
+  const [historico, previousSessions] = await Promise.all([
+    sessionService.getHistory(sid),
+    session.reincidencia ? sessionService.getPreviousSessions(session.telefone, sid, 5) : Promise.resolve([]),
+  ]);
+  const classification = await classify(message, historico, { previousSessions });
   let { intencao, confianca, acaoMK, paramsMK, respostaSugerida, precisaCPF, _tempoMs: tempo_ia_ms } = classification;
 
   // 6. Emitir ia_classificou
@@ -1051,6 +1054,7 @@ async function processMessage(canal, body, replyFn) {
       mkData: { _clienteNaoEncontrado: true, _fluxoVenda: true },
       session,
       historico,
+      previousSessions,
     });
   } else if (mkResult?._clienteNaoEncontrado) {
     // Cliente não encontrado no MK (intenção NÃO é venda) — lead já foi criada acima
@@ -1079,13 +1083,13 @@ async function processMessage(canal, body, replyFn) {
     if (contratoCriado) enrichedMkData._contratoCriado = contratoCriado;
     if (pessoaCriada) enrichedMkData._pessoaCriada = pessoaCriada;
     if (leadCriada) enrichedMkData._leadCriada = leadCriada;
-    resposta = await formatResponse({ intencao, mkData: enrichedMkData, session, historico });
+    resposta = await formatResponse({ intencao, mkData: enrichedMkData, session, historico, previousSessions });
   } else if (acaoMK && !mkResult?.success && mkResult?.data?._erroCadastro) {
     // Erro específico ao criar cadastro — usar IA para formatar resposta
-    resposta = await formatResponse({ intencao, mkData: mkResult.data, session, historico });
+    resposta = await formatResponse({ intencao, mkData: mkResult.data, session, historico, previousSessions });
   } else if (acaoMK && !mkResult?.success && mkResult?.data?._semCobertura) {
     // Sem cobertura na região — usar IA para formatar resposta
-    resposta = await formatResponse({ intencao, mkData: { tem_cobertura: false, ...mkResult.data }, session, historico });
+    resposta = await formatResponse({ intencao, mkData: { tem_cobertura: false, ...mkResult.data }, session, historico, previousSessions });
   } else if (acaoMK && !mkResult?.success) {
     resposta = 'Poxa, deu um probleminha pra consultar seus dados no sistema 😔 Vou te passar pra um colega da equipe resolver isso pra você! Só um minutinho 🙏';
     // Forçar escalonamento quando MK falha

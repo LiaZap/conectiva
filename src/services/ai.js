@@ -394,13 +394,39 @@ function buildHistoryMessages(historico) {
   }));
 }
 
-export async function classify(mensagem, historico) {
+/**
+ * Monta contexto conciso de sessões anteriores para clientes reincidentes.
+ * Retorna null se não houver sessões anteriores.
+ */
+function buildReincidenciaContext(previousSessions) {
+  if (!previousSessions || previousSessions.length === 0) return null;
+
+  const lines = previousSessions.slice(0, 5).map((s, i) => {
+    const data = new Date(s.created_at).toLocaleDateString('pt-BR');
+    const intencao = s.intencao_principal || 'N/A';
+    const status = s.resolvida_por === 'ia' ? 'resolvido pela IA'
+      : s.resolvida_por === 'humano' ? 'resolvido por humano'
+      : s.status || 'N/A';
+    const resumo = s.resumo_ia ? ` — ${s.resumo_ia}` : '';
+    return `${i + 1}. [${data}] ${intencao} (${status})${resumo}`;
+  });
+
+  return `CONTEXTO DE REINCIDÊNCIA — Este cliente já entrou em contato ${previousSessions.length} vez(es) antes:\n${lines.join('\n')}\n\nREGRAS PARA CLIENTES REINCIDENTES:\n- Reconheça que o cliente já entrou em contato antes de forma natural (ex: "Vi que você já conversou com a gente antes...")\n- NÃO peça informações que já foram fornecidas em contatos anteriores (CPF, nome, endereço)\n- Se o problema é recorrente (mesma intenção), demonstre empatia extra e priorize a resolução\n- Referencie o contato anterior se relevante (ex: "Da última vez você precisou de 2ª via...")\n- Clientes reincidentes merecem atenção especial — seja mais proativa`;
+}
+
+export async function classify(mensagem, historico, { previousSessions } = {}) {
   try {
     const messages = [
       { role: 'system', content: buildClassificationPrompt() },
       ...buildHistoryMessages(historico),
       { role: 'user', content: mensagem },
     ];
+
+    // Injetar contexto de reincidência como system message adicional
+    const reincContext = buildReincidenciaContext(previousSessions);
+    if (reincContext) {
+      messages.splice(1, 0, { role: 'system', content: reincContext });
+    }
 
     const start = Date.now();
     const completion = await openai.chat.completions.create({
@@ -432,7 +458,7 @@ export async function classify(mensagem, historico) {
   }
 }
 
-export async function formatResponse({ intencao, mkData, session, historico }) {
+export async function formatResponse({ intencao, mkData, session, historico, previousSessions }) {
   try {
     const context = JSON.stringify({ intencao, mkData, cliente: session?.nome_cliente }, null, 2);
 
@@ -444,6 +470,12 @@ export async function formatResponse({ intencao, mkData, session, historico }) {
         content: `Dados para formatar a resposta:\n${context}`,
       },
     ];
+
+    // Injetar contexto de reincidência
+    const reincContext = buildReincidenciaContext(previousSessions);
+    if (reincContext) {
+      messages.splice(1, 0, { role: 'system', content: reincContext });
+    }
 
     const start = Date.now();
     const completion = await openai.chat.completions.create({

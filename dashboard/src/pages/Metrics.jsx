@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Activity, Users, CheckCircle, Clock, AlertTriangle, Server, Target, Star, ThumbsUp } from 'lucide-react';
+import { Activity, Users, CheckCircle, Clock, AlertTriangle, Server, Target, Star, ThumbsUp, RefreshCw } from 'lucide-react';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend,
@@ -10,7 +10,7 @@ import StatusBadge from '../components/StatusBadge.jsx';
 import {
   getMetricsOverview, getMetricsByChannel, getMetricsByIntent,
   getResolutionRate, getMkApis, getPerformance, getTopEscalations,
-  getSatisfaction,
+  getSatisfaction, getReincidencia,
 } from '../services/api.js';
 
 const PERIODO_OPTS = [
@@ -142,6 +142,7 @@ export default function Metrics() {
   const [performance, setPerformance] = useState([]);
   const [topEscalations, setTopEscalations] = useState([]);
   const [satisfaction, setSatisfaction] = useState({});
+  const [reincidencia, setReincidencia] = useState({});
 
   useEffect(() => {
     Promise.allSettled([
@@ -153,6 +154,7 @@ export default function Metrics() {
       getPerformance(periodo).then((r) => r.success && setPerformance(r.data)),
       getTopEscalations(periodo).then((r) => r.success && setTopEscalations(r.data)),
       getSatisfaction(periodo).then((r) => r.success && setSatisfaction(r.data)),
+      getReincidencia(periodo).then((r) => r.success && setReincidencia(r.data)),
     ]);
   }, [periodo]);
 
@@ -178,7 +180,7 @@ export default function Metrics() {
       </div>
 
       {/* LINHA 1 — Cards grandes + Gauge + Satisfação */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
         <MetricCard
           icon={Activity} label="Total atendimentos" color="white"
           value={overview.total_atendimentos ?? '—'}
@@ -199,6 +201,12 @@ export default function Metrics() {
           icon={AlertTriangle} label="Escalonamentos pendentes" color={overview.total_escalonados > 0 ? 'red' : 'conectiva'}
           value={overview.total_escalonados ?? 0}
           sub={overview.total_escalonados > 0 ? 'Requer atenção' : 'Tudo em dia'}
+        />
+
+        <MetricCard
+          icon={RefreshCw} label="Reincidentes" color="amber"
+          value={overview.total_reincidencias ?? '—'}
+          sub={overview.taxa_reincidencia ? `${overview.taxa_reincidencia}% do total` : null}
         />
 
         {/* Satisfação do Cliente */}
@@ -331,6 +339,45 @@ export default function Metrics() {
               <Bar dataKey="taxa" radius={[4, 4, 0, 0]} fill="#0693e3" name="Taxa %" />
             </BarChart>
           </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* LINHA 3.5 — Reincidência */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="card">
+          <h3 className="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
+            <RefreshCw size={14} className="text-orange-400" /> Taxa de reincidência por dia
+          </h3>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={reincidencia.tendencia || []}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+              <XAxis dataKey="dia" tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={(v) => v?.slice(5)} />
+              <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Bar dataKey="total" fill="#334155" radius={[4, 4, 0, 0]} name="Total" />
+              <Bar dataKey="reincidentes" fill="#f97316" radius={[4, 4, 0, 0]} name="Reincidentes" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="card">
+          <h3 className="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
+            <RefreshCw size={14} className="text-orange-400" /> Top intenções — clientes reincidentes
+          </h3>
+          {(reincidencia.intencoes_reincidentes || []).length > 0 ? (
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={reincidencia.intencoes_reincidentes} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <XAxis type="number" tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                <YAxis dataKey="intencao" type="category" tick={{ fill: '#94a3b8', fontSize: 10 }} width={120} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} />
+                <Bar dataKey="total" radius={[0, 4, 4, 0]} fill="#f97316" />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <p className="text-sm text-slate-500 py-4">Nenhuma reincidência no período</p>
+          )}
         </div>
       </div>
 

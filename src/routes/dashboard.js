@@ -44,7 +44,12 @@ router.get('/api/metrics/overview', async (req, res) => {
              / NULLIF(COUNT(*) FILTER (WHERE s.status IN ('finalizada','expirada')), 0) * 100, 1
            ) AS taxa_resolucao_automatica,
            ROUND(AVG(s.nota_satisfacao)::numeric, 1) AS media_satisfacao,
-           COUNT(*) FILTER (WHERE s.nota_satisfacao IS NOT NULL)::int AS total_avaliacoes
+           COUNT(*) FILTER (WHERE s.nota_satisfacao IS NOT NULL)::int AS total_avaliacoes,
+           COUNT(*) FILTER (WHERE s.reincidencia = true)::int AS total_reincidencias,
+           ROUND(
+             COUNT(*) FILTER (WHERE s.reincidencia = true)::numeric
+             / NULLIF(COUNT(*), 0) * 100, 1
+           ) AS taxa_reincidencia
          FROM sessions s WHERE ${pf.clause}`,
         pf.params
       ),
@@ -275,6 +280,48 @@ router.get('/api/metrics/satisfaction', async (req, res) => {
     });
   } catch (err) {
     console.error('[metrics] satisfaction erro:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ============================================================
+// GET /api/metrics/reincidencia (tendência + top intenções)
+// ============================================================
+router.get('/api/metrics/reincidencia', async (req, res) => {
+  try {
+    const pf = buildPeriodFilter(req.query.periodo);
+
+    const [tendencia, intencoes] = await Promise.all([
+      query(
+        `SELECT
+           DATE(s.created_at) AS dia,
+           COUNT(*)::int AS total,
+           COUNT(*) FILTER (WHERE s.reincidencia = true)::int AS reincidentes,
+           ROUND(
+             COUNT(*) FILTER (WHERE s.reincidencia = true)::numeric
+             / NULLIF(COUNT(*), 0) * 100, 1
+           ) AS taxa
+         FROM sessions s WHERE ${pf.clause}
+         GROUP BY DATE(s.created_at) ORDER BY dia`,
+        pf.params
+      ),
+      query(
+        `SELECT
+           s.intencao_principal AS intencao,
+           COUNT(*)::int AS total
+         FROM sessions s
+         WHERE ${pf.clause} AND s.reincidencia = true AND s.intencao_principal IS NOT NULL
+         GROUP BY s.intencao_principal ORDER BY total DESC LIMIT 10`,
+        pf.params
+      ),
+    ]);
+
+    res.json({
+      success: true,
+      data: { tendencia: tendencia.rows, intencoes_reincidentes: intencoes.rows },
+    });
+  } catch (err) {
+    console.error('[metrics] reincidencia erro:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });

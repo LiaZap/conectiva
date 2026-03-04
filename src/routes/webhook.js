@@ -16,6 +16,35 @@ import { emit, emitToSession, EVENTS } from '../websocket/events.js';
 
 const router = Router();
 
+// ── Helper: extrair dados do cliente da resposta do MK (WSMKConsultaDoc) ──
+// A resposta pode vir em vários formatos:
+// - { CodigoCliente: X, NomeCliente: Y, ... } (direto no raiz)
+// - { Outros: [{ CodigoPessoa: X, Nome: Y, ... }] } (dentro de array Outros)
+// - { CodigoCliente: X, Outros: [...] } (misto)
+function extractClientFromMK(data) {
+  if (!data) return { cdCliente: null, nomeCliente: null, rawData: data };
+
+  // Tentar extrair do nível raiz primeiro
+  let cdCliente = data.CodigoCliente || data.cd_cliente || data.codigo_cliente
+                || data.CdCliente || data.Codigo || data.CodigoPessoa || data.codigo_pessoa;
+  let nomeCliente = data.NomeCliente || data.nome_cliente || data.RazaoSocial
+                  || data.Nome || data.nome;
+
+  // Se não encontrou no raiz, procurar dentro de "Outros" (array do MK)
+  if (!cdCliente && data.Outros) {
+    const lista = Array.isArray(data.Outros) ? data.Outros : [data.Outros];
+    if (lista.length > 0) {
+      const primeiro = lista[0];
+      cdCliente = primeiro.CodigoCliente || primeiro.CodigoPessoa || primeiro.Codigo
+                || primeiro.cd_cliente || primeiro.codigo_pessoa;
+      nomeCliente = nomeCliente || primeiro.NomeCliente || primeiro.Nome || primeiro.nome
+                  || primeiro.RazaoSocial;
+    }
+  }
+
+  return { cdCliente: cdCliente ? String(cdCliente) : null, nomeCliente: nomeCliente || null, rawData: data };
+}
+
 // ── Mensagem de pesquisa de satisfação (CSAT) ──
 const CSAT_MESSAGE = `Que bom que consegui te ajudar! 😊
 
@@ -241,20 +270,16 @@ async function processMessage(canal, body, replyFn) {
       });
 
       if (consultaResult.success && consultaResult.data) {
-        const cData = consultaResult.data;
-        const cdCliente = cData.CodigoCliente || cData.cd_cliente || cData.codigo_cliente
-                       || cData.CdCliente || cData.Codigo;
-        const nomeCliente = cData.NomeCliente || cData.nome_cliente || cData.RazaoSocial
-                         || cData.Nome;
+        const { cdCliente, nomeCliente } = extractClientFromMK(consultaResult.data);
 
         if (cdCliente) {
           // ✅ Cliente encontrado no MK — salvar e prosseguir
-          mkParams.cd_cliente = String(cdCliente);
+          mkParams.cd_cliente = cdCliente;
           await sessionService.update(sid, {
-            cd_cliente_mk: String(cdCliente),
+            cd_cliente_mk: cdCliente,
             ...(nomeCliente && !session.nome_cliente ? { nome_cliente: nomeCliente } : {}),
           });
-          session.cd_cliente_mk = String(cdCliente);
+          session.cd_cliente_mk = cdCliente;
           if (nomeCliente) session.nome_cliente = nomeCliente;
           console.log(`[webhook] Cliente encontrado: cd_cliente=${cdCliente}, nome=${nomeCliente}`);
 
@@ -420,17 +445,14 @@ async function processMessage(canal, body, replyFn) {
             action: 'CONSULTAR_CLIENTE', params: { doc: session.cpf_cnpj }, session_id: sid,
           });
           if (consultaResult.success && consultaResult.data) {
-            const cData = consultaResult.data;
-            const cdCliente = cData.CodigoCliente || cData.cd_cliente || cData.codigo_cliente
-                           || cData.CdCliente || cData.Codigo;
-            const nomeCliente = cData.NomeCliente || cData.nome_cliente || cData.RazaoSocial || cData.Nome;
+            const { cdCliente, nomeCliente } = extractClientFromMK(consultaResult.data);
             if (cdCliente) {
-              mkParams.cd_cliente = String(cdCliente);
+              mkParams.cd_cliente = cdCliente;
               await sessionService.update(sid, {
-                cd_cliente_mk: String(cdCliente),
+                cd_cliente_mk: cdCliente,
                 ...(nomeCliente && !session.nome_cliente ? { nome_cliente: nomeCliente } : {}),
               });
-              session.cd_cliente_mk = String(cdCliente);
+              session.cd_cliente_mk = cdCliente;
               if (nomeCliente) session.nome_cliente = nomeCliente;
               console.log(`[webhook] NOVO_CONTRATO: cliente encontrado cd_cliente=${cdCliente}`);
             } else {
@@ -636,18 +658,16 @@ async function processMessage(canal, body, replyFn) {
     emit(EVENTS.MK_RETORNOU, { session_id: sid, success: mkResult.success, acao: acaoMK });
     emitToSession(sid, EVENTS.MK_RETORNOU, { success: mkResult.success, data: mkResult.data });
 
-    // Salvar cd_cliente_mk se veio do MK (CONSULTAR_CLIENTE retorna CodigoCliente)
+    // Salvar cd_cliente_mk se veio do MK (CONSULTAR_CLIENTE retorna CodigoPessoa dentro de Outros[])
     if (mkResult.success && mkResult.data && !session.cd_cliente_mk) {
-      const d = mkResult.data;
-      const cdCliente = d.CodigoCliente || d.cd_cliente || d.codigo_cliente || d.CdCliente || d.Codigo;
-      const nomeCliente = d.NomeCliente || d.nome_cliente || d.RazaoSocial || d.Nome;
+      const { cdCliente, nomeCliente } = extractClientFromMK(mkResult.data);
 
       if (cdCliente) {
         await sessionService.update(sid, {
-          cd_cliente_mk: String(cdCliente),
+          cd_cliente_mk: cdCliente,
           ...(nomeCliente && !session.nome_cliente ? { nome_cliente: nomeCliente } : {}),
         });
-        session.cd_cliente_mk = String(cdCliente);
+        session.cd_cliente_mk = cdCliente;
         if (nomeCliente) session.nome_cliente = nomeCliente;
         console.log(`[webhook] cd_cliente_mk salvo da resposta MK: ${cdCliente}`);
       }

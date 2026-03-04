@@ -17,24 +17,31 @@ import { emit, emitToSession, EVENTS } from '../websocket/events.js';
 const router = Router();
 
 // ── Helper: extrair dados do cliente da resposta do MK (WSMKConsultaDoc) ──
-// A resposta do n8n vem aninhada: { success, data: { Outros: [{ CodigoPessoa, ... }] }, endpoint }
-// Ou direto: { CodigoCliente, NomeCliente, ... }
-// Ou misto: { Outros: [{ CodigoPessoa, ... }] }
+// Resposta n8n atualizada: { success, CodigoCliente, NomeCliente, data: {...mkRaw}, endpoint }
+// Fallback legado: { success, data: { Outros: [{ CodigoPessoa }] }, endpoint }
 function extractClientFromMK(data) {
   if (!data) return { cdCliente: null, nomeCliente: null };
 
-  // Se o n8n wrapou em { success, data: {...} }, desembrulhar
+  console.log('[extractClient] keys:', Object.keys(data), 'CodigoCliente:', data.CodigoCliente, 'CodigoPessoa:', data.CodigoPessoa);
+
+  // 1. Formato novo: CodigoCliente já no nível raiz da resposta n8n
+  if (data.CodigoCliente) {
+    console.log('[extractClient] Encontrado no raiz:', data.CodigoCliente, data.NomeCliente);
+    return { cdCliente: String(data.CodigoCliente), nomeCliente: data.NomeCliente || null };
+  }
+
+  // 2. Desembrulhar wrapper n8n { success, data: {...} }
   const mkData = data.data && (data.data.Outros || data.data.CodigoCliente || data.data.CodigoPessoa)
     ? data.data
     : data;
 
-  // Tentar extrair do nível raiz
+  // 3. Tentar extrair do nível raiz do MK response
   let cdCliente = mkData.CodigoCliente || mkData.cd_cliente || mkData.codigo_cliente
                 || mkData.CdCliente || mkData.Codigo || mkData.CodigoPessoa || mkData.codigo_pessoa;
   let nomeCliente = mkData.NomeCliente || mkData.nome_cliente || mkData.RazaoSocial
                   || mkData.Nome || mkData.nome;
 
-  // Se não encontrou no raiz, procurar dentro de "Outros" (array do MK WSMKConsultaDoc)
+  // 4. Se não encontrou no raiz, procurar dentro de "Outros" (array do MK WSMKConsultaDoc)
   if (!cdCliente && mkData.Outros) {
     const lista = Array.isArray(mkData.Outros) ? mkData.Outros : [mkData.Outros];
     if (lista.length > 0) {
@@ -46,6 +53,7 @@ function extractClientFromMK(data) {
     }
   }
 
+  console.log('[extractClient] Resultado:', { cdCliente: cdCliente ? String(cdCliente) : null, nomeCliente });
   return { cdCliente: cdCliente ? String(cdCliente) : null, nomeCliente: nomeCliente || null };
 }
 
@@ -259,6 +267,7 @@ async function processMessage(canal, body, replyFn) {
     const INTENCAO_TO_ACAO = {
       'SEGUNDA_VIA': 'FATURAS_PENDENTES',
       'FATURAS': 'FATURAS_PENDENTES',
+      'NEGOCIACAO': 'FATURAS_PENDENTES',
       'DESBLOQUEIO': 'CONEXOES_CLIENTE',
       'SUPORTE': 'CONEXOES_CLIENTE',
       'CONTRATO': 'CONTRATOS_CLIENTE',
@@ -709,6 +718,7 @@ async function processMessage(canal, body, replyFn) {
       const INTENCAO_CHAIN = {
         'SEGUNDA_VIA': 'FATURAS_PENDENTES',
         'FATURAS': 'FATURAS_PENDENTES',
+        'NEGOCIACAO': 'FATURAS_PENDENTES',
         'DESBLOQUEIO': 'CONEXOES_CLIENTE',
         'SUPORTE': 'CONEXOES_CLIENTE',
         'CONTRATO': 'CONTRATOS_CLIENTE',
@@ -732,6 +742,40 @@ async function processMessage(canal, body, replyFn) {
             status: 'sucesso', dados_entrada: chainParams,
             dados_saida: chainResult.data, tempo_ms: chainResult.tempo_ms,
           });
+
+          // ── Sub-encadeamento: SEGUNDA_VIA precisa de cd_fatura (vem de FATURAS_PENDENTES) ──
+          if (intencao === 'SEGUNDA_VIA' && acaoChain === 'FATURAS_PENDENTES') {
+            const faturas = chainResult.data?.FaturasPendentes || chainResult.data?.data?.FaturasPendentes || chainResult.data?.faturas || [];
+            const listaFaturas = Array.isArray(faturas) ? faturas : [faturas];
+            if (listaFaturas.length > 0) {
+              const cdFatura = listaFaturas[0].codfatura || listaFaturas[0].CodigoFatura || listaFaturas[0].cd_fatura;
+              if (cdFatura) {
+                console.log(`[webhook] Sub-encadeando: FATURAS_PENDENTES → SEGUNDA_VIA (cd_fatura=${cdFatura})`);
+                const segViaResult = await n8nExecute({
+                  action: 'SEGUNDA_VIA',
+                  params: { cd_fatura: cdFatura, cd_cliente: session.cd_cliente_mk, doc: session.cpf_cnpj },
+                  session_id: sid,
+                });
+                if (segViaResult.success) {
+                  mkResult = segViaResult;
+                  acaoMK = 'SEGUNDA_VIA';
+                  tempo_mk_ms += segViaResult.tempo_ms;
+                  console.log(`[webhook] SEGUNDA_VIA sub-encadeado com sucesso (${segViaResult.tempo_ms}ms)`);
+                  await logger.saveAction({
+                    session_id: sid, interaction_id: null,
+                    acao: 'SEGUNDA_VIA', descricao: 'Segunda via gerada após consulta de faturas (sub-encadeamento)',
+                    status: 'sucesso', dados_entrada: { cd_fatura: cdFatura },
+                    dados_saida: segViaResult.data, tempo_ms: segViaResult.tempo_ms,
+                  });
+                } else {
+                  console.error(`[webhook] SEGUNDA_VIA sub-encadeamento falhou:`, segViaResult.error);
+                  // Manter resultado das faturas para a IA poder informar ao cliente
+                }
+              }
+            } else {
+              console.log('[webhook] SEGUNDA_VIA: sem faturas pendentes — IA vai informar');
+            }
+          }
         } else {
           console.error(`[webhook] ${acaoChain} encadeado falhou:`, chainResult.error);
         }

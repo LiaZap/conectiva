@@ -60,7 +60,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const mkResponse = $input.first().json;\nconst body = $('Webhook Trigger').first().json.body || {};\n\nreturn [{\n  json: {\n    success: true,\n    data: mkResponse,\n    endpoint: 'WSMKConsultaDoc',\n    session_id: body.session_id || null\n  }\n}];"
+        "jsCode": "const mkResponse = $input.first().json;\nconst body = $('Webhook Trigger').first().json.body || {};\n\n// Extrair CodigoPessoa/Nome de dentro de Outros[] (padrão WSMKConsultaDoc)\nlet CodigoCliente = mkResponse.CodigoCliente || mkResponse.CodigoPessoa || null;\nlet NomeCliente = mkResponse.NomeCliente || mkResponse.Nome || null;\n\nif (!CodigoCliente && mkResponse.Outros) {\n  const lista = Array.isArray(mkResponse.Outros) ? mkResponse.Outros : [mkResponse.Outros];\n  if (lista.length > 0) {\n    const p = lista[0];\n    CodigoCliente = p.CodigoCliente || p.CodigoPessoa || p.Codigo || null;\n    NomeCliente = NomeCliente || p.NomeCliente || p.Nome || p.RazaoSocial || null;\n  }\n}\n\nreturn [{\n  json: {\n    success: !!CodigoCliente,\n    CodigoCliente: CodigoCliente ? String(CodigoCliente) : null,\n    NomeCliente: NomeCliente || null,\n    data: mkResponse,\n    endpoint: 'WSMKConsultaDoc',\n    session_id: body.session_id || null\n  }\n}];"
       },
       "id": "format-response",
       "name": "Formatar Resposta",
